@@ -6,7 +6,7 @@ import SparseArrays
 
 function readToFeTedges(f)
     raw=DelimitedFiles.readdlm(f)
-    
+
     # - .+1 renumber indices from 1 rather than zero
     # - double up (vcat) indices for making explicit A->B && implicit B->A
     As=Int.(vcat(raw[:,1],raw[:,2])) .+ 1
