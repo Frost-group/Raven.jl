@@ -17,3 +17,8 @@ function readToFeTedges(f)
     SparseArrays.sparse(As,Bs,Js)
 end
 
+function readToFeTxyz(f)
+     raw=DelimitedFiles.readdlm(f)
+     XYZ=raw[:,1:3]
+ end
+
