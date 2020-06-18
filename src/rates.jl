@@ -45,10 +45,27 @@ Physical Review B, 63(8), 085202. https://doi.org/10.1103/PhysRevB.63.085202
 "
 function YuPRBpowm!(ω, P)
     Σ=sum # just for notation niceness
-    for i in eachindex(P)
-        P[i] = Σ(ω[i,:] .* P[:]) / Σ(ω[:,i]) / (1 - Σ( (ω[:,i].-ω[i,:]) .* P[:]) / Σ(ω[:,i]) ) 
+    sP=SparseArrays.sparse(P) # sparse representation
+	t=copy(sP) # temporary array for sum reduces
+	for i in eachindex(P)
+        P[i] = Σ(t.= ω[i,:] .* sP) / Σ(t.=ω[:,i]) / (1 - Σ(t.= (ω[:,i].-ω[i,:]) .* sP) / Σ(t.=ω[:,i]) ) 
     end
     P
+end
+
+"Primitive loop to run YuPRBpowm to convergence."
+function YuPRBpowm_converge!(rates,P; eps=0.0001)
+    c=0
+    while true
+        c=c+1
+        Pold=copy(P)
+        Raven.YuPRBpowm!(rates,P)
+   		@show c 
+        if sum(abs.(P-Pold))<eps
+            break
+        end
+    end
+    return c
 end
 
 # None of the below actually works / is tested. Here be dragons.
