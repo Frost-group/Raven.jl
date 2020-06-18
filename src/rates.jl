@@ -46,9 +46,9 @@ Physical Review B, 63(8), 085202. https://doi.org/10.1103/PhysRevB.63.085202
 function YuPRBpowm!(ω, P)
     Σ=sum # just for notation niceness
     sP=SparseArrays.sparse(P) # sparse representation
-	t=copy(sP) # temporary array for sum reduces
+	⋅=SparseArrays.dot # dot product for sum reduce
 	for i in eachindex(P)
-        P[i] = Σ(t.= ω[i,:] .* sP) / Σ(t.=ω[:,i]) / (1 - Σ(t.= (ω[:,i].-ω[i,:]) .* sP) / Σ(t.=ω[:,i]) ) 
+        P[i] = ω[i,:]⋅sP / Σ(ω[:,i]) / (1 - (ω[:,i].-ω[i,:])⋅sP / Σ(ω[:,i]) ) 
     end
     P
 end
