@@ -12,6 +12,10 @@ function rateMarcus(J; T=300, λ=0.5, ΔG=0.0)
     2*π/ħ * J^2 * 1/(sqrt(4*π*λ*k_B*T)) * exp(-(λ+ΔG)^2/(4*π*λ*k_B*T))
 end
 
+function rateMarcus(J, ΔG; T=300, λ=0.5)
+    2*π/ħ * J^2 * 1/(sqrt(4*π*λ*k_B*T)) * exp(-(λ+ΔG)^2/(4*π*λ*k_B*T))
+end
+
 function ratematrix(edges,ratefn)
     # translate back into the dense COO repr; 
     # saves much time and only generates entries for nonzeros
@@ -25,6 +29,21 @@ function ratematrix(edges,ratefn)
     
     SparseArrays.sparse(vcat(As,1:dim),vcat(Bs,1:dim),vcat(rates,diag) )
 end
+
+function ratematrix(edges, Es, ratefn)
+    As,Bs,Js=SparseArrays.findnz(edges)
+    
+    DeltaGs=[ Es[B]-Es[A] for (A,B) in zip(As,Bs) ]
+    
+    rates=ratefn.(Js, DeltaGs)
+
+    dim=edges.m # number of sites
+    diag=dropdims( - sum(SparseArrays.sparse(As,Bs,rates), dims=2), dims=2 ) 
+        # the diagonal of the rate matrix is the negative sum of the column rates
+    
+    SparseArrays.sparse(vcat(As,1:dim),vcat(Bs,1:dim),vcat(rates,diag) )
+end
+
 
 function bareratematrix(edges,ratefn)
     # translate back into the dense COO repr; 
