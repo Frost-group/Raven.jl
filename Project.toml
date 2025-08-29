@@ -5,13 +5,10 @@ version = "0.1.0"
 
 [deps]
 DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
-DiffEqBiological = "eb300fae-53e8-50a0-950c-e21f52c2b7e0"
-DiffEqJump = "c894b116-72e5-5b58-be3c-e6d8d4ac2b12"
-DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
-GR = "28b8d3ca-fb5f-59d9-8090-bfdbd6d07a71"
-Gnuplot = "dc211083-a33a-5b79-959f-2ff34033469d"
 IterativeSolvers = "42fd0dbc-a981-5370-80f2-aaf504508153"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
-Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
-UnicodePlots = "b8865327-cd53-5732-bb35-84acbb429228"
+
+[compat]
+IterativeSolvers = "0.9"
+julia = "1.6"
