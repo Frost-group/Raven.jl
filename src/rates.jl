@@ -57,26 +57,32 @@ end
 
 # Ryo's implementation of an iterative loop for computing MSD and flux? and such.
 
-function masterequationstep!(W,P)
+function masterequationstep(W,P)
     esc = maximum(-LinearAlgebra.diag(W))
     dt = 0.1/esc
     P = P + dt * W * P
     return P
 end
 
-function MEloop!(W,P)
-    crit = 0
+function MEloop(W,P)
     step = 0
-    while 1.0-crit>1e-18
-        Pold=copy(P)
-        P=masterequationstep!(W,P)
-        step = step + 1
-        crit = LinearAlgebra.dot(Pold,P)/(LinearAlgebra.norm(Pold)*LinearAlgebra.norm(P))
-        println("On step $step.")
-    end
+    diff = 1.0
+    steps = []
+    diffs = []
+    times = []
     esc = maximum(-LinearAlgebra.diag(W))
     dt = 0.1/esc
-    return P, step*dt
+    while diff>1e-11
+        Pold=copy(P)
+        P=masterequationstep(W,P)
+        step = step + 1
+        diff = LinearAlgebra.norm(Pold - P)
+        push!(steps, step)
+        push!(diffs, diff)
+        push!(times, step*dt)
+        print("$step, $diff \n")
+    end
+    return P, step*dt, (; steps, times, diffs)
 end
 
 "Single iteration of Yu's power iterative method to solve master equation. Needs a bare ratematrix. (i.e. zeros / empty on the diagonal).
