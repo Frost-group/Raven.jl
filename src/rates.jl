@@ -24,7 +24,7 @@ function ratematrix(edges,ratefn)
     rates=ratefn.(Js) # this applies for each element
     
     dim=edges.m # number of sites
-    diag=dropdims( - sum(SparseArrays.sparse(As,Bs,rates), dims=2), dims=2 ) 
+    diag=dropdims( - sum(SparseArrays.sparse(As,Bs,rates), dims=2), dims=2) 
         # the diagonal of the rate matrix is the negative sum of the column rates
     
     SparseArrays.sparse(vcat(As,1:dim),vcat(Bs,1:dim),vcat(rates,diag) )
@@ -38,7 +38,7 @@ function ratematrix(edges, Es, ratefn)
     rates=ratefn.(Js, DeltaGs)
 
     dim=edges.m # number of sites
-    diag=dropdims( - sum(SparseArrays.sparse(As,Bs,rates), dims=2), dims=2 ) 
+    diag=dropdims( - sum(SparseArrays.sparse(As,Bs,rates), dims=2), dims=2) 
         # the diagonal of the rate matrix is the negative sum of the column rates
     
     SparseArrays.sparse(vcat(As,1:dim),vcat(Bs,1:dim),vcat(rates,diag) )
@@ -53,6 +53,30 @@ function bareratematrix(edges,ratefn)
     rates=ratefn.(Js) # this applies for each element
     
     SparseArrays.sparse(As, Bs, rates )
+end
+
+# Ryo's implementation of an iterative loop for computing MSD and flux? and such.
+
+function masterequationstep!(W,P)
+    esc = maximum(-LinearAlgebra.diag(W))
+    dt = 0.1/esc
+    P = P + dt * W * P
+    return P
+end
+
+function MEloop!(W,P)
+    crit = 0
+    step = 0
+    while 1.0-crit>1e-18
+        Pold=copy(P)
+        P=masterequationstep!(W,P)
+        step = step + 1
+        crit = LinearAlgebra.dot(Pold,P)/(LinearAlgebra.norm(Pold)*LinearAlgebra.norm(P))
+        println("On step $step.")
+    end
+    esc = maximum(-LinearAlgebra.diag(W))
+    dt = 0.1/esc
+    return P, step*dt
 end
 
 "Single iteration of Yu's power iterative method to solve master equation. Needs a bare ratematrix. (i.e. zeros / empty on the diagonal).

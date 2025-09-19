@@ -1,0 +1,12 @@
+using Raven
+
+edges = Raven.readToFeTedges(open("testdata/10chain.edge","r"))
+
+W = Raven.ratematrix(edges, Raven.rateAdiabatic)
+
+P = zeros(10)
+P[1] = 1.0
+
+P = Raven.MEloop!(W,P)
+
+println(P)
