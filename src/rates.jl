@@ -82,7 +82,7 @@ function MEloop(W,P)
         push!(times, step*dt)
         print("$step, $diff \n")
     end
-    return P, step*dt, (; steps, times, diffs)
+    return step*dt, (; steps, times, diffs)
 end
 
 "Single iteration of Yu's power iterative method to solve master equation. Needs a bare ratematrix. (i.e. zeros / empty on the diagonal).
