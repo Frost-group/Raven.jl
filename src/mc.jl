@@ -15,6 +15,19 @@ function initializesystem(a,b,c,f) # creating a physical system of occupancy(0s 
     return lattice, ionlist
 end
 
+function listneighbors(id, ionlist)
+    target = reshape(ionlist[id, 2:4], 1, 3) # returns [x, y, z] for ion number id. Update: when we extract xyz, it returns as a 3x1 vector instead of a matrix?
+    # The reshape function converts a 3x1 vector into a 1x3 matrix.    
+    deltas = [ 1  0  0;
+              -1  0  0;
+               0  1  0;
+               0 -1  0; 
+               0  0  1;
+               0  0 -1 ] # sooo much cleverer using a delta -- gotta thank Jarv!
+    neighbors = target .+ deltas
+    return neighbors
+end
+
 """
 function checkneighbors(A) # selecting a random site from the ion list and checking if its neighbors are occupied or not.
     id = rand(ionlist)
