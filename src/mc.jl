@@ -28,6 +28,12 @@ function listneighbors(id, ionlist)
     return neighbors
 end
 
+function mcstep(lattice, ionlist)
+    movingionid=rand(ionlist[:, 1])
+    oldpos = reshape(ionlist[movingionid, 2:4], 1, 3)
+    candidates = Raven.listneighbors(movingionid, ionlist)
+    newpos = reshape(candidates[rand(1:size(candidates)[1]), :], 1, 3)
+end
 """
 function checkneighbors(A) # selecting a random site from the ion list and checking if its neighbors are occupied or not.
     id = rand(ionlist)
