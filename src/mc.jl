@@ -34,6 +34,21 @@ function mcstep(lattice, ionlist)
     candidates = Raven.listneighbors(movingionid, ionlist)
     newpos = reshape(candidates[rand(1:size(candidates)[1]), :], 1, 3)
 end
+
+function flatten(X, Y, Z, x, y, z) # for flattening 3D coordinates to indexing i.
+    return x + yX + zXY
+end
+
+function unflatten(X, Y, Z, i) # for unflattening index i back to 3D coordinates.
+    x = i % X
+    y = (i ÷ X) % Y
+    z = i ÷ (X * Y) 
+    return (x, y, z)
+end
+
+
+
+
 """
 function checkneighbors(A) # selecting a random site from the ion list and checking if its neighbors are occupied or not.
     id = rand(ionlist)
