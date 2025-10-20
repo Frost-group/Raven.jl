@@ -25,7 +25,7 @@ function initialize(a, b, c, f)
     N = Int64(N)
     id = 1
     S = randperm(S)
-
+    
 
 
 function listneighbors(id, ionlist)
