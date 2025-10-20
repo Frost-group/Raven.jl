@@ -1,4 +1,4 @@
-import LinearAlgebra, IterativeSolvers
+import LinearAlgebra, IterativeSolvers, Random
 
 function initializesystem(a,b,c,f) # creating a physical system of occupancy(0s and 1s, expand later to +1s and -1s). x,y,z for dimensions and O for the occupancy fraction.
     N = round(a * b * c * f)
@@ -14,6 +14,19 @@ function initializesystem(a,b,c,f) # creating a physical system of occupancy(0s 
     end
     return lattice, ionlist
 end
+
+'''
+# Test code for initializing the system below.
+'''
+
+function initialize(a, b, c, f)
+    S = a * b * c # S is the already 'flattened' 1D index that can be linked 1 to 1 to the original 3D lattice via the 'unflatten' function.
+    N = round(a * b * c * f) # number of ions to be generated within the flattened lattice.
+    N = Int64(N)
+    id = 1
+    S = randperm(S)
+
+
 
 function listneighbors(id, ionlist)
     target = reshape(ionlist[id, 2:4], 1, 3) # returns [x, y, z] for ion number id. Update: when we extract xyz, it returns as a 3x1 vector instead of a matrix?
