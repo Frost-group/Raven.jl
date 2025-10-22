@@ -1,5 +1,7 @@
 import LinearAlgebra, IterativeSolvers, Random
 
+# Version 1 demo before implementing data flattening below.
+"""
 function initializesystem(a,b,c,f) # creating a physical system of occupancy(0s and 1s, expand later to +1s and -1s). x,y,z for dimensions and O for the occupancy fraction.
     N = round(a * b * c * f)
     N = Int64(N)
@@ -14,18 +16,23 @@ function initializesystem(a,b,c,f) # creating a physical system of occupancy(0s 
     end
     return lattice, ionlist
 end
+"""
 
-'''
-# Test code for initializing the system below.
-'''
+# Version 2 initialization code based on flattened data.
 
 function initialize(a, b, c, f)
     S = a * b * c # S is the already 'flattened' 1D index that can be linked 1 to 1 to the original 3D lattice via the 'unflatten' function.
     N = round(a * b * c * f) # number of ions to be generated within the flattened lattice.
     N = Int64(N)
-    id = 1
-    S = randperm(S)
-    
+    sel = Random.randperm(S)[1:N] # shuffle flattened matrix S to select the first N entries to determine where ions reside in.
+    pos = Vector{Int}(undef, N)
+    occ = fill(0, S)
+    for id in 1:N
+        pos[id] = sel[id]
+        occ[sel[id]] = id
+    end
+    return a, b, c, pos, occ
+end   
 
 
 function listneighbors(id, ionlist)
