@@ -23,17 +23,20 @@ function neighbors(id, a, b)
     return neighbors
 end
 
-function mcstep(lattice, ionlist)
+function mcstep(pos)
     movingionid=rand(ionlist[:, 1])
     oldpos = reshape(ionlist[movingionid, 2:4], 1, 3)
     candidates = Raven.listneighbors(movingionid, ionlist)
     newpos = reshape(candidates[rand(1:size(candidates)[1]), :], 1, 3)
 end
 
+function flatten(a, b, c, x, y, z) # flattening 3D coordinates to a linear index coordinate.
+    LinearIndices((a, b, c))[x, y, z]
+end
 
-
-
-
+function unflatten(s, a, b, c)
+    Tuple(CartesianIndices((a, b, c))[s])
+end
 
 """
 function flatten(X, Y, Z, x, y, z) # for flattening 3D coordinates to indexing i.
