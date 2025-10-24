@@ -16,11 +16,28 @@ function initialize(a, b, c, f)
     return a, b, c, pos, occ
 end   
 
-function neighbors(id, a, b)
+function flatten(a, b, c, x, y, z) # flattening 3D coordinates to a linear index coordinate.
+    LinearIndices((a, b, c))[x, y, z]
+end
+
+function unflatten(s, a, b, c)
+    Tuple(CartesianIndices((a, b, c))[s])
+end
+
+function neighbors(a, b, c, pos, id) 
+# Note that this function doesn't return the neighbors of, for example, site 7 but the ION with the ID #7!
     target = pos[id]
-    deltas = [1; -1; a; -a; a * b; -a * b] # defining deltas to look at neighbors in linear representation.
-    neighbors = target .+ deltas
-    return neighbors
+    nbrs = Vector{Int64}(undef, 6)
+    (x, y, z) = unflatten(target, a, b, c)
+    k = 1
+    for (dx, dy, dz) in ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1))
+        nx = mod1(x + dx, a)
+        ny = mod1(y + dy, b)
+        nz = mod1(z + dz, c)
+        nbrs[k] = flatten(a, b, c, nx, ny, nz)
+        k += 1
+    end
+    return nbrs
 end
 
 function mcstep(pos)
@@ -30,13 +47,7 @@ function mcstep(pos)
     newpos = reshape(candidates[rand(1:size(candidates)[1]), :], 1, 3)
 end
 
-function flatten(a, b, c, x, y, z) # flattening 3D coordinates to a linear index coordinate.
-    LinearIndices((a, b, c))[x, y, z]
-end
 
-function unflatten(s, a, b, c)
-    Tuple(CartesianIndices((a, b, c))[s])
-end
 
 """
 function flatten(X, Y, Z, x, y, z) # for flattening 3D coordinates to indexing i.
@@ -86,5 +97,4 @@ function initializesystem(a,b,c,f) # creating a physical system of occupancy(0s 
         id = id + 1
     end
     return lattice, ionlist
-end
 """
