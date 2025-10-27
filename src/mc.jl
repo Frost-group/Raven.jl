@@ -5,7 +5,9 @@ import LinearAlgebra, IterativeSolvers, Random
 function initialize(a, b, c, f)
     S = a * b * c # S is the already 'flattened' 1D index that can be linked 1 to 1 to the original 3D lattice via the 'unflatten' function.
     N = round(a * b * c * f) # number of ions to be generated within the flattened lattice.
-    N = Int64(N)
+    N = Int(N)
+    d0 = fill((0.0, 0.0, 0.0), N) # initialization of positions of each ion per row. later used for MSD computation.
+    dr = fill((0.0, 0.0, 0.0), N) # relative position tracker per sweep, also later used for MSD computation.
     sel = Random.randperm(S)[1:N] # shuffle flattened matrix S to select the first N entries to determine where ions reside in.
     pos = Vector{Int}(undef, N)
     occ = fill(0, S)
@@ -13,7 +15,7 @@ function initialize(a, b, c, f)
         pos[id] = sel[id]
         occ[sel[id]] = id
     end
-    return a, b, c, pos, occ
+    return a, b, c, pos, occ, d0
 end   
 
 function flatten(a, b, c, x, y, z) # flattening 3D coordinates to a linear index coordinate.
@@ -27,7 +29,7 @@ end
 function neighbors(a, b, c, pos, id) 
 # Note that this function doesn't return the neighbors of, for example, site 7 but the ION with the ID #7!
     target = pos[id]
-    nbrs = Vector{Int64}(undef, 6)
+    nbrs = Vector{Int}(undef, 6)
     (x, y, z) = unflatten(target, a, b, c)
     k = 1
     for (dx, dy, dz) in ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1))
@@ -40,14 +42,45 @@ function neighbors(a, b, c, pos, id)
     return nbrs
 end
 
-function mcstep(pos)
-    movingionid=rand(ionlist[:, 1])
-    oldpos = reshape(ionlist[movingionid, 2:4], 1, 3)
-    candidates = Raven.listneighbors(movingionid, ionlist)
-    newpos = reshape(candidates[rand(1:size(candidates)[1]), :], 1, 3)
+function mcstep(a, b, c, pos, occ, dr)
+    stepid = rand(1:length(pos))
+    oldpos = pos[stepid]
+    nbrs = Raven.neighbors(a, b, c, pos, stepid)
+    newpos = rand(nbrs)
+    if occ[newpos] == 0 # check if selected neighbor is empty
+        occ[oldpos] = 0 # empty the old position
+        occ[newpos] = stepid # put the ion in the new position
+        pos[stepid] = newpos # update the #ID entry in the ion list
+
+        # load old and new lattice positions
+        x, y, z = unflatten(oldpos, a, b, c)
+        nx, ny, nz = unflatten(newpos, a, b, c)
+
+        # raw differences before PBC correction
+        dx = nx - x
+        dy = ny - y
+        dz = nz - z
+
+        # PBC handling: when crossing the +x boundary, a -> 1 should be +1 and not 1-a
+        if dx == (a - 1); dx = -1 elseif dx == 1 - a; dx = 1 end
+        if dy == (b - 1); dy = -1 elseif dy == 1 - b; dy = 1 end
+        if dz == (c - 1); dz = -1 elseif dz == 1 - c; dz = 1 end
+    
+        return true
+    else
+        return false
+    end
 end
 
-
+function mcloop(a, b, c, f, steps)
+    a, b, c, pos, occ. d0 = Raven.initialize(a, b, c, f)
+    dr = 
+    for i in 1:steps
+        mcstep(a, b, c, pos, occ)
+        print("step $i is complete. \n")
+    end
+    return dr
+end
 
 """
 function flatten(X, Y, Z, x, y, z) # for flattening 3D coordinates to indexing i.
