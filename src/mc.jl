@@ -6,7 +6,7 @@ function initialize(a, b, c, f)
     S = a * b * c # S is the already 'flattened' 1D index that can be linked 1 to 1 to the original 3D lattice via the 'unflatten' function.
     N = round(a * b * c * f) # number of ions to be generated within the flattened lattice.
     N = Int(N)
-    d0 = fill((0.0, 0.0, 0.0), N) # initialization of positions of each ion per row. later used for MSD computation.
+    #d0 = fill((0.0, 0.0, 0.0), N) # initialization of positions of each ion per row. later used for MSD computation.
     dr = fill((0.0, 0.0, 0.0), N) # relative position tracker per sweep, also later used for MSD computation.
     sel = Random.randperm(S)[1:N] # shuffle flattened matrix S to select the first N entries to determine where ions reside in.
     pos = Vector{Int}(undef, N)
@@ -15,7 +15,7 @@ function initialize(a, b, c, f)
         pos[id] = sel[id]
         occ[sel[id]] = id
     end
-    return a, b, c, pos, occ, d0
+    return a, b, c, pos, occ, dr
 end   
 
 function flatten(a, b, c, x, y, z) # flattening 3D coordinates to a linear index coordinate.
@@ -42,10 +42,10 @@ function neighbors(a, b, c, pos, id)
     return nbrs
 end
 
-function mcstep(a, b, c, pos, occ, dr)
+function mcstep!(a, b, c, pos, occ, dr)
     stepid = rand(1:length(pos))
     oldpos = pos[stepid]
-    nbrs = Raven.neighbors(a, b, c, pos, stepid)
+    nbrs = neighbors(a, b, c, pos, stepid)
     newpos = rand(nbrs)
     if occ[newpos] == 0 # check if selected neighbor is empty
         occ[oldpos] = 0 # empty the old position
@@ -65,19 +65,29 @@ function mcstep(a, b, c, pos, occ, dr)
         if dx == (a - 1); dx = -1 elseif dx == 1 - a; dx = 1 end
         if dy == (b - 1); dy = -1 elseif dy == 1 - b; dy = 1 end
         if dz == (c - 1); dz = -1 elseif dz == 1 - c; dz = 1 end
-    
+        
+        # adding each displacement to dr
+        drx, dry, drz = dr[stepid]
+        dr[stepid] = (drx + dx, dry + dy, drz + dz)
+
         return true
     else
         return false
     end
 end
 
-function mcloop(a, b, c, f, steps)
-    a, b, c, pos, occ. d0 = Raven.initialize(a, b, c, f)
-    dr = 
-    for i in 1:steps
-        mcstep(a, b, c, pos, occ)
-        print("step $i is complete. \n")
+function mcloop!(a, b, c, f, steps)
+    a, b, c, pos, occ, dr = initialize(a, b, c, f)
+    attempts = length(dr)
+    sweeps = round(steps/attempts)
+    for sweep in 1:sweeps
+        for attempt in 1:attempts
+            mcstep!(a, b, c, pos, occ, dr)
+            i = attempt + attempts * (sweep - 1)
+            print("step $i is complete. \n")
+        end
+        disp = dr
+        dr = append!(disp, dr)
     end
     return dr
 end
