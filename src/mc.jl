@@ -82,7 +82,7 @@ function mcloop!(a, b, c, N, steps)
             mcstep!(a, b, c, pos, occ, disp, verbose=true)
             println("attempt $(attempt + attempts * (sweep - 1))")
         end
-        dr_log[sweep, :, :] .= disp
+        dr_log[sweep + 1, :, :] .= disp
         println("sweep $sweep / $sweeps")
     end
     return dr_log, pos, occ
