@@ -6,7 +6,7 @@ function initialize(a, b, c, N)
     S = a * b * c # lattice size
     pos = Matrix{Int}(undef, N, 3) # N rows, columns = (x, y, z)
     occ = fill(0, a, b, c)
-    disp = fill(0, N, 3) # relative position tracker per sweep, also later used for MSD computation.
+    disp = fill(0, 3, N) # relative position tracker per sweep, also later used for MSD computation.
     picks = Random.randperm(S)[1:N] # shuffle matrix S to select the first N entries to determine where ions reside in.
     CI = CartesianIndices((a, b, c))
     for id in 1:N
@@ -57,9 +57,9 @@ function mcstep!(a, b, c, pos, occ, disp; verbose=false)
         dz = (nz == z) ? 0 : (nz == mod1(z + 1, c) ? 1 : -1)
 
         # adding each displacement to dr
-        disp[ion, 1] += dx
-        disp[ion, 2] += dy
-        disp[ion, 3] += dz
+        disp[1, ion] += dx
+        disp[2, ion] += dy
+        disp[3, ion] += dz
 
         if verbose
             println("dx:$dx dy:$dy dz:$dz")
@@ -75,7 +75,7 @@ function mcloop!(a, b, c, N, steps)
     a, b, c, pos, occ, disp = initialize(a, b, c, N)
     attempts = N
     sweeps = cld(steps, attempts)
-    dr_log = Array{Int}(undef, sweeps, N, 3)
+    dr_log = Array{Int}(undef, sweeps, 3, N)
     for sweep in 1:sweeps
         for attempt in 1:attempts
             mcstep!(a, b, c, pos, occ, disp, verbose=true)
@@ -87,6 +87,8 @@ function mcloop!(a, b, c, N, steps)
     return dr_log, pos, occ
 end
 
+function msd(dr)
+end
 
 # we might need to get rid of the flattening afterall. RIP.
 """
