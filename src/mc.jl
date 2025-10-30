@@ -89,10 +89,26 @@ function mcloop!(a, b, c, N, steps)
 end
 
 function msd(dr, lag)
-    N = length(dr[3])
-    n = lag
-    msd = 1 / (N - n) * Σ(norm(dr[]))
+    N, _, ioncount = size(dr) # number of data points
+    n = lag # comparing which steps?
+    msd = 1 / ((N - n) * ioncount) * sum(LinearAlgebra.norm(dr[i + n, :, j]- dr[i, :, j])^2 for i in 1:N-n for j in 1:ioncount)
+    return msd
+end
 
+function tracerD(msd, dim, sweeps)
+    Dtr = msd / (2 * dim * sweeps)
+    return Dtr
+end
+
+function DtrSweep(a, b, c, steps)
+    N = a * b * c
+    for i in 1:N
+        dr, pos, occ = mcloop!(a, b, c, N, steps)
+        msd = msd(dr, 1)
+        sweeps = round(steps/i)
+        Dtr = tracerD(msd, 3, sweeps)
+        print(Dtr)
+    end
 end
 
 # we might need to get rid of the flattening afterall. RIP.
