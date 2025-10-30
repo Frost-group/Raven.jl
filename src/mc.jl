@@ -1,4 +1,4 @@
-import LinearAlgebra, IterativeSolvers, Random
+import LinearAlgebra, IterativeSolvers, Random, Printf
 
 # Version 2 initialization code based on flattened data.
 
@@ -100,15 +100,29 @@ function tracerD(msd, dim, sweeps)
     return Dtr
 end
 
-function DtrSweep(a, b, c, steps)
+function DtrSweep(a, b, c, steps, outfile="Dtr_sweep.csv")
     N = a * b * c
-    for i in 1:N
-        dr, _, _ = mcloop!(a, b, c, i, steps)
+    percentiles = 0.0 : 0.05 : 1.0
+    ioncount = round.(Int, N .* percentiles)
+    ioncount[1] = 1
+    Dtrs = Vector{Float64}(undef, length(percentiles))
+    for i in 1:length(ioncount)
+        dr, _, _ = mcloop!(a, b, c, ioncount[i], steps)
         msd = Raven.msd(dr, 1)
-        sweeps = round(steps/i)
-        Dtr = tracerD(msd, 3, sweeps)
-        print("$Dtr \n")
+        sweeps = size(dr, 1)
+        Dtrs[i] = tracerD(msd, 3, sweeps)
+        Printf.@printf("pct=%.2f (N=%d)  Dtr=%g\n", percentiles[i], ioncount[i], Dtrs[i])
     end
+
+    open(outfile, "w") do io
+        println(io, "percentile\tDtr")
+        for i in 1:length(ioncount)
+            Printf.@printf(io, "%.2f\t%.12g\n", percentiles[i], Dtrs[i])
+        end
+    end
+    Printf.@printf("Wrote %s\n", outfile)
+
+    return percentiles, Dtrs
 end
 
 # we might need to get rid of the flattening afterall. RIP.
