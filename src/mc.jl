@@ -75,7 +75,8 @@ function mcloop!(a, b, c, N, steps)
     a, b, c, pos, occ, disp = initialize(a, b, c, N)
     attempts = N
     sweeps = cld(steps, attempts)
-    dr_log = Array{Int}(undef, sweeps, 3, N)
+    dr_log = zeros(Int, sweeps + 1, 3, N)
+    dr_log[1, :, :] .= 0
     for sweep in 1:sweeps
         for attempt in 1:attempts
             mcstep!(a, b, c, pos, occ, disp, verbose=true)
@@ -87,7 +88,11 @@ function mcloop!(a, b, c, N, steps)
     return dr_log, pos, occ
 end
 
-function msd(dr)
+function msd(dr, lag)
+    N = length(dr[3])
+    n = lag
+    msd = 1 / (N - n) * Σ(norm(dr[]))
+
 end
 
 # we might need to get rid of the flattening afterall. RIP.
