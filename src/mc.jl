@@ -61,9 +61,9 @@ function mcstep!(a, b, c, pos, occ, disp; verbose=false)
         disp[2, ion] += dy
         disp[3, ion] += dz
 
-        if verbose
-            println("dx:$dx dy:$dy dz:$dz")
-        end
+        #if verbose
+            #println("dx:$dx dy:$dy dz:$dz")
+        #end
 
         return true
     else
@@ -80,10 +80,10 @@ function mcloop!(a, b, c, N, steps)
     for sweep in 1:sweeps
         for attempt in 1:attempts
             mcstep!(a, b, c, pos, occ, disp, verbose=true)
-            println("attempt $(attempt + attempts * (sweep - 1))")
+            #println("attempt $(attempt + attempts * (sweep - 1))")
         end
         dr_log[sweep + 1, :, :] .= disp
-        println("sweep $sweep / $sweeps")
+        #println("sweep $sweep / $sweeps")
     end
     return dr_log, pos, occ
 end
@@ -103,11 +103,11 @@ end
 function DtrSweep(a, b, c, steps)
     N = a * b * c
     for i in 1:N
-        dr, pos, occ = mcloop!(a, b, c, N, steps)
-        msd = msd(dr, 1)
+        dr, _, _ = mcloop!(a, b, c, i, steps)
+        msd = Raven.msd(dr, 1)
         sweeps = round(steps/i)
         Dtr = tracerD(msd, 3, sweeps)
-        print(Dtr)
+        print("$Dtr \n")
     end
 end
 
