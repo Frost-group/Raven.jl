@@ -90,7 +90,30 @@ function tracerD(msd, dim, lag)
     return Dtr
 end
 
-function DtrSweep(a, b, c, sweeps, outfile="Dtr_sweep.csv")
+function bulkmsd(dr, lag)
+    N, _, ioncount = size(dr)
+    n = lag
+    total = 0.0
+    count = 0
+    for i in 1:(N-n)
+        sx = 0.0; sy = 0.0; sz = 0.0
+        for j in 1:ioncount
+            sx += dr[i+n, 1, j] - dr[i, 1, j]
+            sy += dr[i+n, 2, j] - dr[i, 2, j]
+            sz += dr[i+n, 3, j] - dr[i, 3, j]
+        end
+        total += sx*sx + sy*sy + sz*sz
+        count += 1
+    end
+    return total / count, ioncount
+end
+
+function bulkD(msd, dim, lag, N)
+    Dbulk = msd / (2 * dim * lag * N)
+    return Dbulk
+end
+
+function DtrSweep(a, b, c, sweeps, outfile="Dtr_sweep.tsv")
     N = a * b * c
     percentiles = 0.0 : 0.05 : 1.0
     ioncount = round.(Int, N .* percentiles)
@@ -113,4 +136,72 @@ function DtrSweep(a, b, c, sweeps, outfile="Dtr_sweep.csv")
     Printf.@printf("Wrote %s\n", outfile)
 
     return percentiles, Dtrs
+end
+
+function DbulkSweep(a, b, c, sweeps, outfile="Dbulk_sweep.tsv")
+    N = a * b * c
+    percentiles = 0.0 : 0.05 : 1.0
+    ioncount = round.(Int, N .* percentiles)
+    ioncount[1] = 1
+    Dbulks = Vector{Float64}(undef, length(percentiles))
+    for i in 1:length(ioncount)
+        steps = sweeps * ioncount[i]
+        dr, _, _ = mcloop!(a, b, c, ioncount[i], steps)
+        msd, N = Raven.bulkmsd(dr, 20)
+        Dbulks[i] = bulkD(msd, 3, 20, N)
+        Printf.@printf("pct=%.2f (N=%d)  Dbulk=%g\n", percentiles[i], ioncount[i], Dbulks[i])
+    end
+
+    open(outfile, "w") do io
+        println(io, "percentile\tDbulk")
+        for i in 1:length(ioncount)
+            Printf.@printf(io, "%.2f\t%.12g\n", percentiles[i], Dbulks[i])
+        end
+    end
+    Printf.@printf("Wrote %s\n", outfile)
+
+    return percentiles, Dbulks
+end
+
+function HavenSweep(a, b, c, sweeps, lagtime, outfile="haven_sweep.tsv")
+    SITES = a * b * c
+    percentiles = collect(0.0 : 0.05 : 1.0)
+    ioncount = round.(Int, SITES .* percentiles)
+    ioncount[1] = 1
+
+    Dtrs   = Vector{Float64}(undef, length(percentiles))
+    Dbulks = Vector{Float64}(undef, length(percentiles))
+    Havens = Vector{Float64}(undef, length(percentiles))
+
+    for k in eachindex(ioncount)
+        Nions = ioncount[k]
+        steps = sweeps * Nions                     # same # of sweeps across loadings
+        dr, _, _ = mcloop!(a, b, c, Nions, steps)  # dr :: (S,3,N)
+
+        # tracer TAMSD → D_tr
+        msd_tr, lag = msd(dr, lagtime)
+        Dtr = tracerD(msd_tr, 3, lag)
+
+        # bulk (Einstein–Helfand) TAMSD → D_bulk (a.k.a. D_sigma)
+        msd_col, Nin_msdbulk = bulkmsd(dr, lagtime)      # your bulkmsd returns (value, Nions)
+        Dbulk = bulkD(msd_col, 3, lagtime, Nin_msdbulk)
+
+        H = Dbulk / Dtr
+
+        Dtrs[k]   = Dtr
+        Dbulks[k] = Dbulk
+        Havens[k] = H
+
+        Printf.@printf("pct=%.2f (N=%d)  Dtr=%.6g  Dbulk=%.6g  Haven=%.6g\n", percentiles[k], Nions, Dtr, Dbulk, H)
+    end
+
+    open(outfile, "w") do io
+        println(io, "percentile\tDtr\tDbulk\tHaven")
+        for k in eachindex(percentiles)
+            Printf.@printf(io, "%.2f\t%.12g\t%.12g\t%.12g\n", percentiles[k], Dtrs[k], Dbulks[k], Havens[k])
+        end
+    end
+    Printf.@printf "Wrote %s\n" outfile
+
+    return percentiles, Dtrs, Dbulks, Havens
 end
