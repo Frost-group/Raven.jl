@@ -1,12 +1,12 @@
 set datafile separator '\t'           # change to ',' if CSV
 set key autotitle columnhead
 set term pngcairo size 1200,800
-set output 'D_vs_loading.png'
+set output 'f_vsfI.png'
 set grid
 set xlabel 'Occupancy percentile'
-set ylabel 'Diffusion coefficient'
+set ylabel 'Correlation factors'
 #set logscale y                       # optional if values span orders of magnitude
-set xrange [0:1]
+set xrange [0:0.95]
 
-plot 'Morgan_noninteracting.tsv' using 1:2 with linespoints t 'D_{tr}', \
-     ''                using 1:3 with linespoints t 'D_σ'
+plot 'Morgan_noninteracting.tsv' using 1:5 with linespoints t 'f_{tr}', \
+     ''                using 1:6 with linespoints t 'f_{col}'
