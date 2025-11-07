@@ -176,6 +176,7 @@ function DbulkSweep(a, b, c, sweeps, outfile="Dbulk_sweep.tsv")
     return percentiles, Dbulks
 end
 
+"""
 # Haven + extras (percentile, Dtr, Dbulk, Haven, tracerMSD, reduced conductivity)
 # kB and T are configurable; q defaults to 1.0
 function HavenSweep(a, b, c, sweeps, lagtime; kB::Float64=1.0, T::Float64=1.0, q::Float64=1.0, outfile="haven_sweep.tsv")
@@ -222,6 +223,7 @@ function HavenSweep(a, b, c, sweeps, lagtime; kB::Float64=1.0, T::Float64=1.0, q
         Printf.@printf("pct=%.2f (N=%d)  Dtr=%.6g  Dbulk=%.6g  Haven=%.6g  MSDtr=%.6g  MSDcol=%.6g  σ_red=%.6g\n",
                        percentiles[k], Nions, Dtr, Dbulk, H, msd_tr, msd_col, sigma_red)
     end
+"""
 
     # Write TSV: percentile, Dtr, Dbulk, Haven, tracerMSD, reduced conductivity
     open(outfile, "w") do io
