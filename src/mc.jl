@@ -17,7 +17,25 @@ function initialize(a, b, c, N)
     return a, b, c, pos, occ, disp
 end
 
-
+function initialize_defects(a, b, c, N, M) # Extra variable M for the number of defects introduced in the system.
+    S = a * b * c
+    pos = Matrix{Int}(undef, N, 3)
+    occ = fill(0, a, b, c)
+    disp = fill(0, 3, N)
+    picks = Random.randperm(S)[1:N + M]
+    CI = CartesianIndices((a, b, c))
+    for defect in 1:M
+        x, y, z = Tuple(CI[picks[defect]])
+        # pos[defect, :] .= (x, y, z) we don't make a defect list for now.
+        occ[x, y, z] = -1
+    end
+    for id in 1:N
+        x, y, z = Tuple(CI[picks[M + id]])
+        pos[id, :] .= (x, y, z)
+        occ[x, y, z] = id
+    end
+    return a, b, c, pos, occ, disp
+end
 
 # Alright let's make the mcstep! function do explicit arithemtic and integrate it with the neighbor function.
 function mcstep!(a, b, c, pos, occ, disp)
@@ -176,69 +194,6 @@ function DbulkSweep(a, b, c, sweeps, outfile="Dbulk_sweep.tsv")
     return percentiles, Dbulks
 end
 
-"""
-# Haven + extras (percentile, Dtr, Dbulk, Haven, tracerMSD, reduced conductivity)
-# kB and T are configurable; q defaults to 1.0
-function HavenSweep(a, b, c, sweeps, lagtime; kB::Float64=1.0, T::Float64=1.0, q::Float64=1.0, outfile="haven_sweep.tsv")
-    SITES = a * b * c
-    percentiles = collect(0.0 : 0.05 : 1.0)
-    ioncount = round.(Int, SITES .* percentiles)
-    ioncount[1] = 1
-
-    Dtrs    = Vector{Float64}(undef, length(percentiles))
-    Dbulks  = Vector{Float64}(undef, length(percentiles))
-    Havens  = Vector{Float64}(undef, length(percentiles))
-    msd_trs = Vector{Float64}(undef, length(percentiles))
-    msd_cols = Vector{Float64}(undef, length(percentiles))
-    sigma_reds = Vector{Float64}(undef, length(percentiles))
-
-    for k in eachindex(ioncount)
-        Nions = ioncount[k]
-        steps = sweeps * Nions                     # same # of sweeps across loadings
-        dr, _, _ = mcloop!(a, b, c, Nions, steps)  # dr :: (S,3,N)
-
-        # tracer TAMSD → D_tr
-        msd_tr, lag = msd(dr, lagtime)
-        Dtr = tracerD(msd_tr, 3, lag)
-
-        # bulk (Einstein–Helfand) TAMSD → D_bulk (a.k.a. D_sigma)
-        msd_col, Nin_bulk = bulkmsd(dr, lagtime)   # returns (value, Nions)
-        Dbulk = bulkD(msd_col, 3, lagtime, Nin_bulk)
-
-        # Haven ratio
-        H = Dbulk / Dtr
-
-        # concentration per site and "reduced conductivity" C q^2 Dtr / (kB T)
-        C = Nions / SITES
-        sigma_red = C * (q*q) * Dtr / (kB * T)
-
-        # store
-        Dtrs[k] = Dtr
-        Dbulks[k] = Dbulk
-        Havens[k] = H
-        msd_trs[k] = msd_tr
-        msd_cols[k] = msd_col / (Nions * steps)
-        sigma_reds[k] = sigma_red
-
-        Printf.@printf("pct=%.2f (N=%d)  Dtr=%.6g  Dbulk=%.6g  Haven=%.6g  MSDtr=%.6g  MSDcol=%.6g  σ_red=%.6g\n",
-                       percentiles[k], Nions, Dtr, Dbulk, H, msd_tr, msd_col, sigma_red)
-    end
-
-
-    # Write TSV: percentile, Dtr, Dbulk, Haven, tracerMSD, reduced conductivity
-    open(outfile, "w") do io
-        println(io, "percentile\tDtr\tDbulk\tHaven\ttracerMSD\tbulkMSD\treduced_conductivity")
-        for k in eachindex(percentiles)
-            Printf.@printf(io, "%.2f\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\n",
-                           percentiles[k], Dtrs[k], Dbulks[k], Havens[k], msd_trs[k], msd_cols[k], sigma_reds[k])
-        end
-    end
-    Printf.@printf "Wrote %s\n" outfile
-
-    return percentiles, Dtrs, Dbulks, Havens, msd_trs, msd_cols, sigma_reds
-end
-"""
-
 function MorganSweep(a, b, c, sweeps, lagtime;
                          a_lat::Float64=1.0, kB::Float64=1.0, T::Float64=1.0, q::Float64=1.0,
                          outfile::AbstractString="Morgan_noninteracting.tsv")
@@ -333,3 +288,5 @@ function MorganSweep(a, b, c, sweeps, lagtime;
 
     return percentiles, Dtrs, Dbulks, Havens, f_tr, f_col, sigma_reds
 end
+
+
