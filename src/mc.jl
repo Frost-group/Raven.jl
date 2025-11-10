@@ -17,7 +17,7 @@ function initialize(a, b, c, N)
     return a, b, c, pos, occ, disp
 end
 
-function initialize_defects(a, b, c, N, M) # Extra variable M for the number of defects introduced in the system.
+function initialize(a, b, c, N, M) # Extra variable M for the number of defects introduced in the system.
     S = a * b * c
     pos = Matrix{Int}(undef, N, 3)
     occ = fill(0, a, b, c)
@@ -73,6 +73,36 @@ end
 
 function mcloop!(a, b, c, N, steps)
     a, b, c, pos, occ, disp = initialize(a, b, c, N)
+    attempts = N
+    sweeps = cld(steps, attempts)
+    dr_log = zeros(Int32, sweeps + 1, 3, N)
+    acc = zeros(Int32, N) # cumulative acceptance ratio
+    acc_log = zeros(Int32, sweeps + 1, N) # log for acceptance
+    dr_log[1, :, :] .= 0
+    acc_log[1, :] .= 0
+
+    total_attempts = 0
+    total_accepts = 0
+
+    for sweep in 1:sweeps
+        for attempt in 1:attempts
+            total_attempts += 1
+            moved_ion = mcstep!(a, b, c, pos, occ, disp)
+            if moved_ion != 0
+                total_accepts += 1
+                acc[moved_ion] += 1
+            #println("attempt $(attempt + attempts * (sweep - 1))")
+            end
+        end
+        dr_log[sweep + 1, :, :] .= disp
+        acc_log[sweep + 1, :] .= acc
+        #println("sweep $sweep / $sweeps")
+    end
+    return dr_log, acc_log, pos, occ, (total_accepts, total_attempts)
+end
+
+function mcloop!(a, b, c, N, M, steps)
+    a, b, c, pos, occ, disp = initialize(a, b, c, N, M)
     attempts = N
     sweeps = cld(steps, attempts)
     dr_log = zeros(Int32, sweeps + 1, 3, N)
@@ -290,3 +320,24 @@ function MorganSweep(a, b, c, sweeps, lagtime;
 end
 
 
+function DefectSweep(a, b, c, defects, sweeps, lagtime;
+                        a_lat::Float54=1.0, kB::Float64=1.0, T::Float64, q::1.0,
+                        outfile::AbstractString="defect_sweep.tsv")
+        
+        SITES = a * b * c
+        percentiles = collect(0.0 : 0.05 : 1.0)
+        ioncount = round.(Int, SITES .* percentiles); ioncount[1] = 1
+
+        Dtrs    = Vector{Float64}(undef, length(percentiles))
+        Dbulks  = Vector{Float64}(undef, length(percentiles))
+        Havens  = Vector{Float64}(undef, length(percentiles))
+        f_tr    = Vector{Float64}(undef, length(percentiles))
+        f_col   = Vector{Float64}(undef, length(percentiles))
+        sigma_reds = Vector{Float64}(undef, length(percentiles))
+
+        for k in eachindex(ioncount)
+            Nions = ioncount[k]
+            steps = sweeps * Nions
+            dr, acc_log, _, _, _ = mcloop!
+
+end
