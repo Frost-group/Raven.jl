@@ -223,7 +223,7 @@ function HavenSweep(a, b, c, sweeps, lagtime; kB::Float64=1.0, T::Float64=1.0, q
         Printf.@printf("pct=%.2f (N=%d)  Dtr=%.6g  Dbulk=%.6g  Haven=%.6g  MSDtr=%.6g  MSDcol=%.6g  σ_red=%.6g\n",
                        percentiles[k], Nions, Dtr, Dbulk, H, msd_tr, msd_col, sigma_red)
     end
-"""
+
 
     # Write TSV: percentile, Dtr, Dbulk, Haven, tracerMSD, reduced conductivity
     open(outfile, "w") do io
@@ -237,6 +237,7 @@ function HavenSweep(a, b, c, sweeps, lagtime; kB::Float64=1.0, T::Float64=1.0, q
 
     return percentiles, Dtrs, Dbulks, Havens, msd_trs, msd_cols, sigma_reds
 end
+"""
 
 function MorganSweep(a, b, c, sweeps, lagtime;
                          a_lat::Float64=1.0, kB::Float64=1.0, T::Float64=1.0, q::Float64=1.0,
@@ -269,7 +270,7 @@ function MorganSweep(a, b, c, sweeps, lagtime;
         msd_col, Nin = bulkmsd(dr, τ)           # Nin should equal Nions
         Dbulk = bulkD(msd_col, 3, τ, Nin)
 
-        H = Dbulk / Dtr
+        H = Dtr / Dbulk
 
         # --- correlation factors (ratio-of-sums over windows) ---
         # tracer:   f_tr  = (Σ_s,i ||Δr_i||^2) / (Σ_s,i Δh_i * a^2)
