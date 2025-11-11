@@ -415,14 +415,13 @@ function Sweep(a, b, c, defects, sweeps, lagtime;
 end
 
 function DefectSweepFixedN(a, b, c, Nions, sweeps, lagtime;
-        defect_fracs = 0.0:0.05:0.95,
-        a_lat::Float64 = 1.0,
-        kB::Float64 = 1.0,
-        T::Float64 = 1.0,
-        q::Float64 = 1.0,
-        outfile::AbstractString = "defect_sweep.tsv"
-    )
-
+    defect_fracs = 0.0:0.05:0.95,
+    a_lat::Float64 = 1.0,
+    kB::Float64 = 1.0,
+    T::Float64 = 1.0,
+    q::Float64 = 1.0,
+    outfile::AbstractString = "defect_sweep.tsv"
+)
     SITES = a * b * c
     @assert 1 <= Nions <= SITES "Nions must be between 1 and total sites."
 
@@ -439,17 +438,16 @@ function DefectSweepFixedN(a, b, c, Nions, sweeps, lagtime;
     for k in eachindex(φs)
         M = Mlist[k]
 
-        # If there are no free sites (jammed system), write zeros and continue.
+        # Jammed: no vacancies ⇒ zero diffusion (avoid running MC)
         if Nions + M >= SITES
             Dtrs[k]   = 0.0
             Dbulks[k] = 0.0
-            Havens[k] = NaN      # 0/0 is undefined; NaN makes the plot honest
+            Havens[k] = NaN
             f_tr[k]   = NaN
             f_col[k]  = NaN
             σ_red[k]  = 0.0
-
             Printf.@printf("φ=%.2f (M=%d)  JAMMED ⇒ Dtr=0  Dbulk=0  Haven=NaN  f_tr=NaN  f_col=NaN  σ_red=0\n",
-                        φs[k], M)
+                           φs[k], M)
             continue
         end
 
@@ -458,7 +456,7 @@ function DefectSweepFixedN(a, b, c, Nions, sweeps, lagtime;
         S, D, N = size(dr); @assert D == 3
         τ = lagtime; @assert 1 <= τ <= S-1
 
-        # --- diffusion coefficients via your helpers ---
+        # Diffusion coefficients
         msd_tr, lag = msd(dr, τ)
         Dtr = tracerD(msd_tr, 3, lag)
 
@@ -467,7 +465,7 @@ function DefectSweepFixedN(a, b, c, Nions, sweeps, lagtime;
 
         H = Dtr / Dbulk
 
-        # --- correlation factors (ratio-of-sums over windows) ---
+        # Correlation factors
         sum_d2_tr = 0.0; sum_dh_tr = 0.0
         sum_d2_col = 0.0; sum_dh_col = 0.0
         @inbounds for s in 1:(S-τ)
@@ -493,11 +491,10 @@ function DefectSweepFixedN(a, b, c, Nions, sweeps, lagtime;
                 sum_dh_col += dh_sum
             end
         end
-
         ftr  = (sum_dh_tr  > 0) ? sum_d2_tr  / (sum_dh_tr  * a_lat*a_lat) : NaN
         fcol = (sum_dh_col > 0) ? sum_d2_col / (sum_dh_col * a_lat*a_lat) : NaN
 
-        # reduced conductivity: C q^2 Dtr / (kB T)
+        # Reduced conductivity: C q^2 Dtr / (kB T)
         C = Nions / SITES
         sigma_red = C * (q*q) * Dtr / (kB * T)
 
@@ -509,6 +506,32 @@ function DefectSweepFixedN(a, b, c, Nions, sweeps, lagtime;
         σ_red[k]  = sigma_red
 
         Printf.@printf("φ=%.2f (M=%d)  Dtr=%.6g  Dbulk=%.6g  Haven=%.6g  f_tr=%.6g  f_col=%.6g  σ_red=%.6g\n",
-                    φs[k], M, Dtr, Dbulk, H, ftr, fcol, sigma_red)
+                       φs[k], M, Dtr, Dbulk, H, ftr, fcol, sigma_red)
     end
+    Dtr0   = Dtrs[1]
+    Dbulk0 = Dbulks[1]
+
+    # safe normalization helpers (avoid divide-by-zero or NaN baseline)
+    norm_or_nan(x, x0) = (isfinite(x0) && x0 != 0.0) ? (x / x0) : NaN
+
+    Dtr_norm   = [norm_or_nan(Dtrs[k],   Dtr0)   for k in eachindex(Dtrs)]
+    Dbulk_norm = [norm_or_nan(Dbulks[k], Dbulk0) for k in eachindex(Dbulks)]
+
+    # --- write TSV with normalized columns added ---
+    mkpath("data")
+    open(joinpath("data", outfile), "w") do io
+        println(io, "defect_frac\tM\tDtr\tDbulk\tHaven\tf_tr\tf_col\treduced_conductivity\tDtr_norm\tDbulk_norm")
+        for k in eachindex(φs)
+            Printf.@printf(io,
+                "%.4f\t%d\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\n",
+                φs[k], Mlist[k],
+                Dtrs[k], Dbulks[k], Havens[k], f_tr[k], f_col[k], σ_red[k],
+                Dtr_norm[k], Dbulk_norm[k]
+            )
+        end
+    end
+    Printf.@printf("Wrote %s\n", joinpath("data", outfile))
+
+    return φs, Mlist, Dtrs, Dbulks, Havens, f_tr, f_col, σ_red, Dtr_norm, Dbulk_norm
 end
+

@@ -36,8 +36,8 @@ T       = argparse(Float64, 8, 1.0)
 q       = argparse(Float64, 9, 1.0)
 outfile = (length(ARGS) ≥ 10) ? ARGS[10] : "data/Morgan_noninteracting.tsv"
 
-# Call MorganSweep from src/mc.jl\
-Raven.MorganSweep(a, b, c, sweeps, lagtime;
+# Call Sweep from src/mc.jl\
+Raven.Sweep(a, b, c, sweeps, lagtime;
                   a_lat = a_lat, kB = kB, T = T, q = q, outfile = outfile)
 
 println("Done. Wrote ", outfile)
