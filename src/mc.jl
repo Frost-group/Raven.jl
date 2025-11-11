@@ -519,7 +519,7 @@ function DefectSweepFixedN(a, b, c, Nions, sweeps, lagtime;
 
     # --- write TSV with normalized columns added ---
     mkpath("data")
-    open(joinpath("data", outfile), "w") do io
+    open(outfile, "w") do io
         println(io, "defect_frac\tM\tDtr\tDbulk\tHaven\tf_tr\tf_col\treduced_conductivity\tDtr_norm\tDbulk_norm")
         for k in eachindex(φs)
             Printf.@printf(io,
