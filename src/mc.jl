@@ -1,6 +1,6 @@
 import LinearAlgebra, IterativeSolvers, Random, Printf
 
-# Version 2 initialization code based on flattened data.
+# Note: this code uses multiple dispatch quite often so it is advised to read the comments carefully if you want to follow what's going on!
 
 function initialize(a, b, c, N)
     S = a * b * c # lattice size
@@ -224,7 +224,7 @@ function DbulkSweep(a, b, c, sweeps, outfile="Dbulk_sweep.tsv")
     return percentiles, Dbulks
 end
 
-function MorganSweep(a, b, c, sweeps, lagtime;
+function Sweep(a, b, c, sweeps, lagtime;
                          a_lat::Float64=1.0, kB::Float64=1.0, T::Float64=1.0, q::Float64=1.0,
                          outfile::AbstractString="Morgan_noninteracting.tsv")
 
@@ -320,24 +320,195 @@ function MorganSweep(a, b, c, sweeps, lagtime;
 end
 
 
-function DefectSweep(a, b, c, defects, sweeps, lagtime;
-                        a_lat::Float54=1.0, kB::Float64=1.0, T::Float64, q::1.0,
+function Sweep(a, b, c, defects, sweeps, lagtime;
+                        a_lat::Float64=1.0, kB::Float64=1.0, T::Float64=1.0, q::Float64=1.0,
                         outfile::AbstractString="defect_sweep.tsv")
         
-        SITES = a * b * c
-        percentiles = collect(0.0 : 0.05 : 1.0)
-        ioncount = round.(Int, SITES .* percentiles); ioncount[1] = 1
+    SITES = a * b * c
+    percentiles = collect(0.0 : 0.05 : 1.0)
+    ioncount = round.(Int, SITES .* percentiles); ioncount[1] = 1
+    Dtrs    = Vector{Float64}(undef, length(percentiles))
+    Dbulks  = Vector{Float64}(undef, length(percentiles))
+    Havens  = Vector{Float64}(undef, length(percentiles))
+    f_tr    = Vector{Float64}(undef, length(percentiles))    
+    f_col   = Vector{Float64}(undef, length(percentiles))
+    sigma_reds = Vector{Float64}(undef, length(percentiles))
 
-        Dtrs    = Vector{Float64}(undef, length(percentiles))
-        Dbulks  = Vector{Float64}(undef, length(percentiles))
-        Havens  = Vector{Float64}(undef, length(percentiles))
-        f_tr    = Vector{Float64}(undef, length(percentiles))
-        f_col   = Vector{Float64}(undef, length(percentiles))
-        sigma_reds = Vector{Float64}(undef, length(percentiles))
+    for k in eachindex(ioncount)
+        Nions = ioncount[k]
+        steps = sweeps * Nions
+        dr, acc_log, _, _, _ = mcloop!(a, b, c, Nions, defects, steps)
 
-        for k in eachindex(ioncount)
-            Nions = ioncount[k]
-            steps = sweeps * Nions
-            dr, acc_log, _, _, _ = mcloop!
+        S, D, N = size(dr); @assert D == 3
+        τ = lagtime; @assert 1 <= τ <= S-1
+        # tracer diffusion
+        msd_tr, lag = msd(dr, τ)
+        Dtr = tracerD(msd_tr, 3, lag)
 
+        # bulk diffusion
+        msd_col, Nin = bulkmsd(dr, τ)
+        Dbulk = bulkD(msd_col, 3, τ, Nin)
+
+        # Haven ratio
+        H = Dtr / Dbulk
+    
+        # --- correlation factors (ratio-of-sums over windows) ---
+        # tracer:   f_tr  = (Σ_s,i ||Δr_i||^2) / (Σ_s,i Δh_i * a^2)
+        # collective: f_col = (Σ_s ||Σ_i Δr_i||^2) / (Σ_s Σ_i Δh_i * a^2)
+        sum_d2_tr  = 0.0; sum_dh_tr  = 0.0
+        sum_d2_col = 0.0; sum_dh_col = 0.0
+
+        @inbounds for s in 1:(S-τ)
+            # tracer pieces
+            for i in 1:N
+                dh = acc_log[s+τ,i] - acc_log[s,i]
+                if dh > 0
+                    dx = dr[s+τ,1,i] - dr[s,1,i]
+                    dy = dr[s+τ,2,i] - dr[s,2,i]
+                    dz = dr[s+τ,3,i] - dr[s,3,i]
+                    sum_d2_tr += dx*dx + dy*dy + dz*dz
+                    sum_dh_tr += dh
+                end
+            end
+            # collective pieces
+            sx=0.0; sy=0.0; sz=0.0; dh_sum=0.0
+            for i in 1:N
+                sx += dr[s+τ,1,i] - dr[s,1,i]
+                sy += dr[s+τ,2,i] - dr[s,2,i]
+                sz += dr[s+τ,3,i] - dr[s,3,i]
+                dh_sum += (acc_log[s+τ,i] - acc_log[s,i])
+            end
+            if dh_sum > 0
+                sum_d2_col += sx*sx + sy*sy + sz*sz
+                sum_dh_col += dh_sum
+            end
+        end
+
+        ftr  = (sum_dh_tr  > 0) ? sum_d2_tr  / (sum_dh_tr  * a_lat*a_lat) : NaN
+        fcol = (sum_dh_col > 0) ? sum_d2_col / (sum_dh_col * a_lat*a_lat) : NaN
+
+        # --- reduced conductivity: C q^2 Dtr / (kB T) ---
+        C = Nions / SITES
+        sigma_red = C * (q*q) * Dtr / (kB * T)
+
+        Dtrs[k]   = Dtr
+        Dbulks[k] = Dbulk
+        Havens[k] = H
+        f_tr[k]   = ftr
+        f_col[k]  = fcol
+        sigma_reds[k] = sigma_red
+
+        Printf.@printf("pct=%.2f (N=%d)  Dtr=%.6g  Dbulk=%.6g  Haven=%.6g  f_tr=%.6g  f_col=%.6g  σ_red=%.6g\n",
+                       percentiles[k], Nions, Dtr, Dbulk, H, ftr, fcol, sigma_red)
+    end
+
+    open(outfile, "w") do io
+        println(io, "percentile\tDtr\tDbulk\tHaven\tf_tr\tf_col\treduced_conductivity")
+        for k in eachindex(percentiles)
+            Printf.@printf(io, "%.2f\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\n",
+                           percentiles[k], Dtrs[k], Dbulks[k], Havens[k], f_tr[k], f_col[k], sigma_reds[k])
+        end
+    end
+    Printf.@printf("Wrote %s\n", outfile)
+
+    return percentiles, Dtrs, Dbulks, Havens, f_tr, f_col, sigma_reds
+end
+
+function DefectSweepFixedN(a, b, c, Nions, sweeps, lagtime;
+        defect_fracs = 0.0:0.05:0.95,
+        a_lat::Float64 = 1.0,
+        kB::Float64 = 1.0,
+        T::Float64 = 1.0,
+        q::Float64 = 1.0,
+        outfile::AbstractString = "defect_sweep.tsv"
+    )
+
+    SITES = a * b * c
+    @assert 1 <= Nions <= SITES "Nions must be between 1 and total sites."
+
+    φs = collect(defect_fracs)
+    Mlist = round.(Int, φs .* SITES)
+
+    Dtrs    = similar(φs, Float64)
+    Dbulks  = similar(φs, Float64)
+    Havens  = similar(φs, Float64)
+    f_tr    = similar(φs, Float64)
+    f_col   = similar(φs, Float64)
+    σ_red   = similar(φs, Float64)
+
+    for k in eachindex(φs)
+        M = Mlist[k]
+
+        # If there are no free sites (jammed system), write zeros and continue.
+        if Nions + M >= SITES
+            Dtrs[k]   = 0.0
+            Dbulks[k] = 0.0
+            Havens[k] = NaN      # 0/0 is undefined; NaN makes the plot honest
+            f_tr[k]   = NaN
+            f_col[k]  = NaN
+            σ_red[k]  = 0.0
+
+            Printf.@printf("φ=%.2f (M=%d)  JAMMED ⇒ Dtr=0  Dbulk=0  Haven=NaN  f_tr=NaN  f_col=NaN  σ_red=0\n",
+                        φs[k], M)
+            continue
+        end
+
+        steps = sweeps * Nions
+        dr, acc_log, _, _, _ = mcloop!(a, b, c, Nions, M, steps)
+        S, D, N = size(dr); @assert D == 3
+        τ = lagtime; @assert 1 <= τ <= S-1
+
+        # --- diffusion coefficients via your helpers ---
+        msd_tr, lag = msd(dr, τ)
+        Dtr = tracerD(msd_tr, 3, lag)
+
+        msd_col, Nin = bulkmsd(dr, τ)
+        Dbulk = bulkD(msd_col, 3, τ, Nin)
+
+        H = Dtr / Dbulk
+
+        # --- correlation factors (ratio-of-sums over windows) ---
+        sum_d2_tr = 0.0; sum_dh_tr = 0.0
+        sum_d2_col = 0.0; sum_dh_col = 0.0
+        @inbounds for s in 1:(S-τ)
+            for i in 1:N
+                dh = acc_log[s+τ,i] - acc_log[s,i]
+                if dh > 0
+                    dx = dr[s+τ,1,i] - dr[s,1,i]
+                    dy = dr[s+τ,2,i] - dr[s,2,i]
+                    dz = dr[s+τ,3,i] - dr[s,3,i]
+                    sum_d2_tr += dx*dx + dy*dy + dz*dz
+                    sum_dh_tr += dh
+                end
+            end
+            sx=0.0; sy=0.0; sz=0.0; dh_sum=0.0
+            for i in 1:N
+                sx += dr[s+τ,1,i] - dr[s,1,i]
+                sy += dr[s+τ,2,i] - dr[s,2,i]
+                sz += dr[s+τ,3,i] - dr[s,3,i]
+                dh_sum += (acc_log[s+τ,i] - acc_log[s,i])
+            end
+            if dh_sum > 0
+                sum_d2_col += sx*sx + sy*sy + sz*sz
+                sum_dh_col += dh_sum
+            end
+        end
+
+        ftr  = (sum_dh_tr  > 0) ? sum_d2_tr  / (sum_dh_tr  * a_lat*a_lat) : NaN
+        fcol = (sum_dh_col > 0) ? sum_d2_col / (sum_dh_col * a_lat*a_lat) : NaN
+
+        # reduced conductivity: C q^2 Dtr / (kB T)
+        C = Nions / SITES
+        sigma_red = C * (q*q) * Dtr / (kB * T)
+
+        Dtrs[k]   = Dtr
+        Dbulks[k] = Dbulk
+        Havens[k] = H
+        f_tr[k]   = ftr
+        f_col[k]  = fcol
+        σ_red[k]  = sigma_red
+
+        Printf.@printf("φ=%.2f (M=%d)  Dtr=%.6g  Dbulk=%.6g  Haven=%.6g  f_tr=%.6g  f_col=%.6g  σ_red=%.6g\n",
+                    φs[k], M, Dtr, Dbulk, H, ftr, fcol, sigma_red)
+    end
 end
