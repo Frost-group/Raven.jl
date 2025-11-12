@@ -2,6 +2,10 @@ import LinearAlgebra, IterativeSolvers, Random, Printf
 
 # Note: this code uses multiple dispatch quite often so it is advised to read the comments carefully if you want to follow what's going on!
 
+
+function gaussian()
+end
+
 function initialize(a, b, c, N)
     S = a * b * c # lattice size
     pos = Matrix{Int}(undef, N, 3) # N rows, columns = (x, y, z)
