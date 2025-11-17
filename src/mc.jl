@@ -3,7 +3,8 @@ import LinearAlgebra, IterativeSolvers, Random, Printf
 # Note: this code uses multiple dispatch quite often so it is advised to read the comments carefully if you want to follow what's going on!
 
 
-function gaussian()
+function gaussian(z)
+    return exp(z^2/2)/√(2π)
 end
 
 function initialize(a, b, c, N)
@@ -15,7 +16,9 @@ function initialize(a, b, c, N)
     CI = CartesianIndices((a, b, c))
     for id in 1:N
         x, y, z = Tuple(CI[picks[id]])
-        pos[id, :] .= (x, y, z)
+        pos[id, :] .= (x, y, z)+
+        ++
+        
         occ[x, y, z] = id
     end
     return a, b, c, pos, occ, disp
