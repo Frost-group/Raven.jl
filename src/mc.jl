@@ -3,8 +3,54 @@ import LinearAlgebra, IterativeSolvers, Random, Printf
 # Note: this code uses multiple dispatch quite often so it is advised to read the comments carefully if you want to follow what's going on!
 
 
-function gaussian(z)
-    return exp(z^2/2)/√(2π)
+@inline gaussian(z) = exp(-0.5*z*z) / sqrt(2π)
+
+@inline function pbcΔ(d, L)
+    x = mod(d, L)
+    return (x <= L>>1) ? x : x - L
+end
+
+@inline function r2_pbc(x, y, z, xk, yk, zk, Lx, Ly, Lz, a_lat)
+    dx = pbcΔ(x - xk, Lx); dy = pbcΔ(y - yk, Ly); dz = pbcΔ(z - zk, Lz)
+    return (dx*a_lat)^2 + (dy*a_lat)^2 + (dz*a_lat)^2
+end
+
+function defect_centers(occ)
+    Lx, Ly, Lz = size(occ)
+    centers = Vector{NTuple{3, Int}}()
+    @inbounds for x in 1:Lx, y in 1:Ly, z in 1:Lz
+        if occ[x, y, z] == -1
+            push!(centers, (x, y, z))
+        end
+    end
+    return centers
+end
+
+function build_potential(a, b, c, occ; A, sigma, a_lat)
+    centers = defect_centers(occ)
+    V = zeros(Float64, a, b, c)
+    isempty(centers) && return V
+    inv2σ2 = 1.0/(2*sigma^2)
+    @inbounds for x in 1:a, y in 1:b, z in 1:c
+        v = 0.0
+        for (xk, yk, zk) in centers
+            r2 = r2_pbc(x, y, z, xk, yk, zk, a, b, c, a_lat)
+            v += A * exp(-r2 * inv2σ2)
+        end
+        V[x, y, z] = v
+    end
+    return V
+end
+
+function write_slice_tsv(V, z0, path)
+    a, b, c = size(V); @assert 1 <= z0 <= c
+    mkpath(dirname(path))
+    open(path, "w") do io
+        println(io, "x\ty\tV")
+        @inbounds for y in 1:b, x in 1:a
+            Printf.@printf(io, "%d\t%d\t%.9g\n", x, y, V[x, y, z0])
+        end
+    end
 end
 
 function initialize(a, b, c, N)
@@ -16,9 +62,7 @@ function initialize(a, b, c, N)
     CI = CartesianIndices((a, b, c))
     for id in 1:N
         x, y, z = Tuple(CI[picks[id]])
-        pos[id, :] .= (x, y, z)+
-        ++
-        
+        pos[id, :] .= (x, y, z)
         occ[x, y, z] = id
     end
     return a, b, c, pos, occ, disp
