@@ -24,7 +24,7 @@ outdir="${11:-plots}"
 # Paths assuming this script is at repo root
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 RUN_JL="${ROOT_DIR}/run_defects.jl"
-GP_SCRIPT="${ROOT_DIR}/gnuplot_scripts/plot_defects.gp"
+GP_SCRIPT="${ROOT_DIR}/gnuplot_scripts/defect_sweep.gp"
 
 mkdir -p "$(dirname "$outfile")" "$outdir"
 

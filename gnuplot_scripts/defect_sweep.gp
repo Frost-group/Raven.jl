@@ -23,13 +23,13 @@ plot file using 1:3 with linespoints lw 2 pt 7 title "D_{tr}", \
 # 2) Haven ratio vs defect_frac
 set output "plots/defects_Haven.png"
 set ylabel "Haven ratio (D_{tr} / D_{bulk})"
-set yrange [0:*]
+set yrange [0:1.5]
 plot file using 1:5 with linespoints lw 2 pt 7 title "Haven"
 
 # 3) Correlation factors vs defect_frac
 set output "plots/defects_correlation_factors.png"
 set ylabel "Correlation factor f"
-set yrange [0:1.2]
+set yrange [0:*]
 plot file using 1:6 with linespoints lw 2 pt 7 title "f_{tr}", \
      file using 1:7 with linespoints lw 2 pt 5 title "f_{col}"
 
@@ -44,5 +44,5 @@ set output "plots/defects_normalized.png"
 set xlabel "Defect fraction (ϕ)"
 set ylabel "D(ϕ) / D(0)"
 set yrange [0:*]
-plot file using 1:9  with linespoints lw 2 pt 7 title "D_{tr}(ϕ)/D_{tr}(0)", \
-     file using 1:10 with linespoints lw 2 pt 5 title "D_{bulk}(ϕ)/D_{bulk}(0)"
+plot file using 1:9  with linespoints lw 2 pt 7 title "D_{tr} (ϕ)/D_{tr} (0)", \
+     file using 1:10 with linespoints lw 2 pt 5 title "D_{bulk} (ϕ)/D_{bulk} (0)"

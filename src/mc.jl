@@ -2,9 +2,6 @@ import LinearAlgebra, IterativeSolvers, Random, Printf
 
 # Note: this code uses multiple dispatch quite often so it is advised to read the comments carefully if you want to follow what's going on!
 
-
-@inline gaussian(z) = exp(-0.5*z*z) / sqrt(2π)
-
 @inline function pbcΔ(d, L)
     x = mod(d, L)
     return (x <= L>>1) ? x : x - L
@@ -122,6 +119,41 @@ function mcstep!(a, b, c, pos, occ, disp)
     end
 end
 
+function mcstep!(a, b, c, pos, occ, disp, V, β)
+    @inbounds begin
+        ion = rand(1:size(pos, 1))
+        x = pos[ion, 1]; y = pos[ion, 2]; z = pos[ion, 3]
+        d = rand(1:6)
+        if d == 1
+            nx = (x == a ? 1 : x+1); ny = y; nz = z; dx = 1; dy = 0; dz = 0
+        elseif d == 2
+            nx = (x == 1 ? a : x-1); ny = y; nz = z; dx =-1; dy = 0; dz = 0
+        elseif d == 3
+            ny = (y == b ? 1 : y+1); nx = x; nz = z; dx = 0; dy = 1; dz = 0
+        elseif d == 4
+            ny = (y == 1 ? b : y-1); nx = x; nz = z; dx = 0; dy =-1; dz = 0
+        elseif d == 5
+            nz = (z == c ? 1 : z+1); nx = x; ny = y; dx = 0; dy = 0; dz = 1
+        elseif d == 6
+            nz = (z == 1 ? c : z-1); nx = x; ny = y; dx = 0; dy = 0; dz =-1
+        end
+
+        if occ[nx, ny, nz] != 0
+            return 0
+        end
+
+        ΔU = V[nx, ny, nz] - V[x, y, z] # energy change for the hop
+        if (ΔU <= 0.0) || (rand() < exp(-β*ΔU))
+            occ[x, y, z] = 0
+            occ[nx, ny, nz] = ion
+            pos[ion, 1] = nx; disp[2, ion] += dy; disp[3, ion] += dz
+            return ion
+        else
+            return 0
+        end
+    end
+end
+
 function mcloop!(a, b, c, N, steps)
     a, b, c, pos, occ, disp = initialize(a, b, c, N)
     attempts = N
@@ -181,6 +213,36 @@ function mcloop!(a, b, c, N, M, steps)
     end
     return dr_log, acc_log, pos, occ, (total_accepts, total_attempts)
 end
+
+function mcloop_g!(a, b, c, N, M, steps; A=-2.0, sigma=2.0, a_lat=1.0, kB=1.0, T=1.0)
+    β = 1.0/(kB*T)
+    a, b, c, pos, occ, disp = initialize(a, b, c, N, M)
+    V = build_potential(a, b, c, occ; A=A, sigma=sigma, a_lat=a_lat)
+
+    attempts = N
+    sweeps   = cld(steps, attempts)
+    dr_log   = zeros(Int32, sweeps+1, 3, N)
+    acc      = zeros(Int32, N)
+    acc_log  =
+     zeros(Int32, sweeps+1, N)
+    dr_log[1, :, :] .= 0; acc_log[1, :] .= 0
+
+    total_attempts=0; total_accepts=0
+    for sweep in 1:sweeps
+        for attempt in 1:attempts
+            total_attempts += 1
+            moved = mcstep!(a, b, c, pos, occ, disp, V, β)
+            if moved != 0
+                total_accepts += 1
+                acc[moved] += 1
+            end
+        end
+        dr_log[sweep+1, :, :] .= disp
+        acc_log[sweep+1, :] .= acc
+    end
+    return dr_log, acc_log, pos, occ, (total_accepts, total_attempts)
+end
+
 
 function msd(dr, lag) # faster implementation of MSD calculation not relying on the norm function: no copying, faster computation.
     N, _, ioncount = size(dr)
@@ -503,7 +565,7 @@ function DefectSweepFixedN(a, b, c, Nions, sweeps, lagtime;
         end
 
         steps = sweeps * Nions
-        dr, acc_log, _, _, _ = mcloop!(a, b, c, Nions, M, steps)
+        dr, acc_log, _, _, _ = mcloop_g!(a, b, c, Nions, M, steps)
         S, D, N = size(dr); @assert D == 3
         τ = lagtime; @assert 1 <= τ <= S-1
 

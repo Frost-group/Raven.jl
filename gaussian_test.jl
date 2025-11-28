@@ -1,5 +1,5 @@
 using Pkg
-# Activate project (assumes this file lives in scripts/)
+# Activate project
 isfile("Project.toml") && Pkg.activate(".")
 
 using Raven
