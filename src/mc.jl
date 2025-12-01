@@ -146,7 +146,8 @@ function mcstep!(a, b, c, pos, occ, disp, V, β)
         if (ΔU <= 0.0) || (rand() < exp(-β*ΔU))
             occ[x, y, z] = 0
             occ[nx, ny, nz] = ion
-            pos[ion, 1] = nx; disp[2, ion] += dy; disp[3, ion] += dz
+            pos[ion, 1] = nx; pos[ion, 2] = ny; pos[ion, 3] = nz
+            disp[1, ion] += dx; disp[2, ion] += dy; disp[3, ion] += dz
             return ion
         else
             return 0
@@ -214,7 +215,7 @@ function mcloop!(a, b, c, N, M, steps)
     return dr_log, acc_log, pos, occ, (total_accepts, total_attempts)
 end
 
-function mcloop_g!(a, b, c, N, M, steps; A=-2.0, sigma=2.0, a_lat=1.0, kB=1.0, T=1.0)
+function mcloop_g!(a, b, c, N, M, steps; A=-2.0, sigma=2.35, a_lat=1.0, kB=1.0, T=1.0)
     β = 1.0/(kB*T)
     a, b, c, pos, occ, disp = initialize(a, b, c, N, M)
     V = build_potential(a, b, c, occ; A=A, sigma=sigma, a_lat=a_lat)
