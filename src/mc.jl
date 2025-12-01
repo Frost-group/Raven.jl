@@ -39,6 +39,21 @@ function build_potential(a, b, c, occ; A, sigma, a_lat)
     return V
 end
 
+function build_coulomb_potential(a,b,c, occ; q_def = +1.0, k_e = 1.0, a_lat=1.0, eps2 = 0.25)
+    centers = defect_centers(occ)
+    V = zeros(Float64, a,b,c)
+    isempty(centers) && return V
+    @inbounds for x in 1:a, y in 1:b, z in 1:c
+        v = 0.0
+        for (xk, yk, zk) in centers
+            r2 = r2_pbc(x,y,z,xk,yk,zk, a,b,c, a_lat)
+            v += k_e * q_def / sqrt(r2 + eps2)
+        end
+        V[x, y, z] = v
+    end
+    return V
+end
+
 function write_slice_tsv(V, z0, path)
     a, b, c = size(V); @assert 1 <= z0 <= c
     mkpath(dirname(path))
@@ -215,10 +230,10 @@ function mcloop!(a, b, c, N, M, steps)
     return dr_log, acc_log, pos, occ, (total_accepts, total_attempts)
 end
 
-function mcloop_g!(a, b, c, N, M, steps; A=-2.0, sigma=2.35, a_lat=1.0, kB=1.0, T=1.0)
+function mcloop_g!(a, b, c, N, M, steps; q_def=+1.0, k_e=1.0, a_lat=1.0, eps2=0.25, kB=1.0, T=1.0)
     β = 1.0/(kB*T)
     a, b, c, pos, occ, disp = initialize(a, b, c, N, M)
-    V = build_potential(a, b, c, occ; A=A, sigma=sigma, a_lat=a_lat)
+    V = build_coulomb_potential(a,b,c,occ; q_def=q_def, k_e=k_e, a_lat=a_lat, eps2=eps2)
 
     attempts = N
     sweeps   = cld(steps, attempts)
