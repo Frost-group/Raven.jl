@@ -581,7 +581,7 @@ function DefectSweepFixedN(a, b, c, Nions, sweeps, lagtime;
         end
 
         steps = sweeps * Nions
-        dr, acc_log, _, _, _ = mcloop_g!(a, b, c, Nions, M, steps)
+        dr, acc_log, _, _, _ = mcloop_g!(a, b, c, Nions, M, steps; kB=kB, T=T)
         S, D, N = size(dr); @assert D == 3
         τ = lagtime; @assert 1 <= τ <= S-1
 
