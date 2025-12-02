@@ -54,6 +54,14 @@ function build_coulomb_potential(a,b,c, occ; q_def = +1.0, k_e = 1.0, a_lat=1.0,
     return V
 end
 
+function disorder_strength(V; kB=1.0, T=1.0, d=3)
+    β = 1.0 / (kB * T)
+    vmean = mean(V)
+    χ0 = mean((V .- vmean).^2)
+    S = β^2 * χ0 / d        # spatial variance over lattice sites
+    return χ0, S            # d=3, Witkoskie-Yang-Cao (2002) β^2 * χ0 / 3
+end
+
 function write_slice_tsv(V, z0, path)
     a, b, c = size(V); @assert 1 <= z0 <= c
     mkpath(dirname(path))

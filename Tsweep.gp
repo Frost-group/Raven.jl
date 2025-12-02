@@ -8,7 +8,7 @@ file = "data/defect_Tsweep.tsv"
 
 # Choose which temperatures to plot (strings that match the T column numerically)
 # Edit this line to match what you ran:
-Temps = "0.5 1.0 1.5 2.0 3.0"
+Temps = "1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0 10.0"
 
 # 1) D_tr vs defect fraction, multiple T
 set output "plots/defects_Dtr_vs_phi_Tsweep.png"
