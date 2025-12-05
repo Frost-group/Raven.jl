@@ -1,4 +1,4 @@
-import LinearAlgebra, IterativeSolvers, Random, Printf
+import LinearAlgebra, IterativeSolvers, Random, Printf, Statistics
 
 # Note: this code uses multiple dispatch quite often so it is advised to read the comments carefully if you want to follow what's going on!
 
@@ -56,8 +56,8 @@ end
 
 function disorder_strength(V; kB=1.0, T=1.0, d=3)
     β = 1.0 / (kB * T)
-    vmean = mean(V)
-    χ0 = mean((V .- vmean).^2)
+    vmean = Statistics.mean(V)
+    χ0 = Statistics.mean((V .- vmean).^2)
     S = β^2 * χ0 / d        # spatial variance over lattice sites
     return χ0, S            # d=3, Witkoskie-Yang-Cao (2002) β^2 * χ0 / 3
 end
@@ -557,12 +557,16 @@ function DefectSweepFixedN(a, b, c, Nions, sweeps, lagtime;
     kB::Float64 = 1.0,
     T::Float64 = 1.0,
     q::Float64 = 1.0,
-    outfile::AbstractString = "defect_sweep.tsv"
+    # keep these in sync with mcloop_g! so the disorder field matches the MC energy surface:
+    q_def::Float64 = +1.0,
+    k_e::Float64   = 1.0,
+    eps2::Float64  = 0.25,
+    outfile::AbstractString = "data/defect_sweep.tsv"
 )
     SITES = a * b * c
     @assert 1 <= Nions <= SITES "Nions must be between 1 and total sites."
 
-    φs = collect(defect_fracs)
+    φs    = collect(defect_fracs)
     Mlist = round.(Int, φs .* SITES)
 
     Dtrs    = similar(φs, Float64)
@@ -571,29 +575,37 @@ function DefectSweepFixedN(a, b, c, Nions, sweeps, lagtime;
     f_tr    = similar(φs, Float64)
     f_col   = similar(φs, Float64)
     σ_red   = similar(φs, Float64)
+    χ0s     = similar(φs, Float64)   # <— allocate OUTSIDE the loop
+    Svals   = similar(φs, Float64)   # <— allocate OUTSIDE the loop
 
     for k in eachindex(φs)
         M = Mlist[k]
 
-        # Jammed: no vacancies ⇒ zero diffusion (avoid running MC)
+        # Jammed: no vacancies ⇒ zero diffusion
         if Nions + M >= SITES
-            Dtrs[k]   = 0.0
-            Dbulks[k] = 0.0
-            Havens[k] = NaN
-            f_tr[k]   = NaN
-            f_col[k]  = NaN
-            σ_red[k]  = 0.0
-            Printf.@printf("φ=%.2f (M=%d)  JAMMED ⇒ Dtr=0  Dbulk=0  Haven=NaN  f_tr=NaN  f_col=NaN  σ_red=0\n",
-                           φs[k], M)
+            Dtrs[k]=0.0; Dbulks[k]=0.0; Havens[k]=NaN
+            f_tr[k]=NaN; f_col[k]=NaN; σ_red[k]=0.0
+            χ0s[k]=NaN;  Svals[k]=NaN
+            Printf.@printf("φ=%.2f (M=%d)  JAMMED ⇒ Dtr=0  Dbulk=0  Haven=NaN  f_tr=NaN  f_col=NaN  σ_red=0  χ0=NaN  S=NaN\n",
+                    φs[k], M)
             continue
         end
 
         steps = sweeps * Nions
-        dr, acc_log, _, _, _ = mcloop_g!(a, b, c, Nions, M, steps; kB=kB, T=T)
+        dr, acc_log, pos, occ, _ = mcloop_g!(a, b, c, Nions, M, steps;
+                                             q_def=q_def, k_e=k_e, a_lat=a_lat, eps2=eps2,
+                                             kB=kB, T=T)
+
+        # build the SAME potential used for MC acceptance (same params!)
+        V = build_coulomb_potential(a, b, c, occ; q_def=q_def, k_e=k_e, a_lat=a_lat, eps2=eps2)
+
+        χ0, Sval = disorder_strength(V; kB=kB, T=T, d=3)
+        χ0s[k]   = χ0
+        Svals[k] = Sval
+
         S, D, N = size(dr); @assert D == 3
         τ = lagtime; @assert 1 <= τ <= S-1
 
-        # Diffusion coefficients
         msd_tr, lag = msd(dr, τ)
         Dtr = tracerD(msd_tr, 3, lag)
 
@@ -602,7 +614,7 @@ function DefectSweepFixedN(a, b, c, Nions, sweeps, lagtime;
 
         H = Dtr / Dbulk
 
-        # Correlation factors
+        # correlation factors
         sum_d2_tr = 0.0; sum_dh_tr = 0.0
         sum_d2_col = 0.0; sum_dh_col = 0.0
         @inbounds for s in 1:(S-τ)
@@ -631,7 +643,7 @@ function DefectSweepFixedN(a, b, c, Nions, sweeps, lagtime;
         ftr  = (sum_dh_tr  > 0) ? sum_d2_tr  / (sum_dh_tr  * a_lat*a_lat) : NaN
         fcol = (sum_dh_col > 0) ? sum_d2_col / (sum_dh_col * a_lat*a_lat) : NaN
 
-        # Reduced conductivity: C q^2 Dtr / (kB T)
+        # reduced conductivity
         C = Nions / SITES
         sigma_red = C * (q*q) * Dtr / (kB * T)
 
@@ -642,33 +654,30 @@ function DefectSweepFixedN(a, b, c, Nions, sweeps, lagtime;
         f_col[k]  = fcol
         σ_red[k]  = sigma_red
 
-        Printf.@printf("φ=%.2f (M=%d)  Dtr=%.6g  Dbulk=%.6g  Haven=%.6g  f_tr=%.6g  f_col=%.6g  σ_red=%.6g\n",
-                       φs[k], M, Dtr, Dbulk, H, ftr, fcol, sigma_red)
+        Printf.@printf("φ=%.2f (M=%d)  Dtr=%.6g  Dbulk=%.6g  Haven=%.6g  f_tr=%.6g  f_col=%.6g  σ_red=%.6g  χ0=%.6g  S=%.6g\n",
+                φs[k], M, Dtr, Dbulk, H, ftr, fcol, sigma_red, χ0, Sval)
     end
+
     Dtr0   = Dtrs[1]
     Dbulk0 = Dbulks[1]
-
-    # safe normalization helpers (avoid divide-by-zero or NaN baseline)
     norm_or_nan(x, x0) = (isfinite(x0) && x0 != 0.0) ? (x / x0) : NaN
-
     Dtr_norm   = [norm_or_nan(Dtrs[k],   Dtr0)   for k in eachindex(Dtrs)]
     Dbulk_norm = [norm_or_nan(Dbulks[k], Dbulk0) for k in eachindex(Dbulks)]
 
-    # --- write TSV with normalized columns added ---
-    mkpath("data")
+    mkpath(dirname(outfile))  # write wherever the caller asked
     open(outfile, "w") do io
-        println(io, "defect_frac\tM\tDtr\tDbulk\tHaven\tf_tr\tf_col\treduced_conductivity\tDtr_norm\tDbulk_norm")
+        println(io, "defect_frac\tM\tchi0\tbeta2chi0_over3\tDtr\tDbulk\tHaven\tf_tr\tf_col\treduced_conductivity\tDtr_norm\tDbulk_norm")
         for k in eachindex(φs)
-            Printf.@printf(io,
-                "%.4f\t%d\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\n",
-                φs[k], Mlist[k],
-                Dtrs[k], Dbulks[k], Havens[k], f_tr[k], f_col[k], σ_red[k],
-                Dtr_norm[k], Dbulk_norm[k]
-            )
+            Printf.@printf(io, "%.4f\t%d\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\n",
+                    φs[k], Mlist[k],
+                    χ0s[k], Svals[k],
+                    Dtrs[k], Dbulks[k], Havens[k], f_tr[k], f_col[k], σ_red[k],
+                    Dtr_norm[k], Dbulk_norm[k])
         end
     end
-    Printf.@printf("Wrote %s\n", joinpath("data", outfile))
+    Printf.@printf("Wrote %s\n", outfile)
 
-    return φs, Mlist, Dtrs, Dbulks, Havens, f_tr, f_col, σ_red, Dtr_norm, Dbulk_norm
+    return φs, Mlist, Dtrs, Dbulks, Havens, f_tr, f_col, σ_red, Dtr_norm, Dbulk_norm, χ0s, Svals
 end
+
 
