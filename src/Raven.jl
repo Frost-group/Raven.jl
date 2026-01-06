@@ -6,5 +6,6 @@ include("types.jl")
 include("rates.jl")
 include("ToFeT_io.jl")
 include("mc.jl")
+include("grf.jl")
 
 end # module
