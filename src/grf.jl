@@ -33,3 +33,21 @@ function grfpotential(a,b,c,σ,ξ::Float64=2.0,rng=Random.default_rng())
 
     return V
 end
+
+function initialization(a,b,c,N; σ=1.0, ξ=2.0, rng=Random.default_rng())
+    S = a*b*c
+    pos = Matrix{Int}(undef, N, 3)
+    occ = fill(0, a, b, c)
+    disp = fill(0, 3, N)
+
+    picks = Random.randperm(rng, S)[1:N]
+    CI = CartesianIndices((a, b, c))
+    for id in 1:N
+        x, y, z = Tuple(CI[picks[id]])
+        pos[id, :] .= (x, y, z)
+        occ[x, y, z] = id
+    end
+
+    V = (σ > 0) ? grfpotential(a,b,c,σ,ξ,rng) : zeros(a,b,c)
+    return (a=a, b=b, c=c, pos=pos, occ=occ, disp=disp, V=V)
+end
