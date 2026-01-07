@@ -51,3 +51,56 @@ function initialization(a,b,c,N; σ=1.0, ξ=2.0, rng=Random.default_rng())
     V = (σ > 0) ? grfpotential(a,b,c,σ,ξ,rng) : zeros(a,b,c)
     return (a=a, b=b, c=c, pos=pos, occ=occ, disp=disp, V=V)
 end
+
+const NBR = ((1,0,0),(-1,0,0),(0,1,0),(0,-1,0),(0,0,1),(0,0,-1))
+@inline mod1p(i, L) = mod(i, L) + 1 # 1..L periodic wrap
+
+function attempt!(st, id, β, rng)
+    a,b,c = st.a, st.b, st.c
+    pos, occ, disp, V = st.pos, st.occ, st.disp, st.V
+
+    x,y,z = pos[id,1], pos[id,2], pos[id,3]
+    dx,dy,dz = NBR[rand(rng, 1:length(NBR))]
+
+    x2 = mod1p(x-1 + dx, a)
+    y2 = mod1p(y-1 + dy, b)
+    z2 = mod1p(z-1 + dz, c)
+
+    occ[x2, y2, z2] != 0 && return false
+
+    ΔE = V[x2,y2,z2] - V[x,y,z]
+
+    if ΔE <= 0 || rand(rng) < exp(-β*ΔE)
+        occ[x,y,z] = 0
+        occ[x2,y2,z2] = id
+        pos[id,:] .= (x2,y2,z2)
+
+        # displacement update
+        disp[1,id] += dx; disp[2,id] += dy; disp[3,id] += dz
+        return true
+    end
+    return false
+end
+
+function run!(st; β=1.0, sweeps=10000, sample_every=10, rng=Random.default_rng())
+    N = size(st.pos, 1)
+    times = Int[]
+    msd_t = Float64[]
+
+    for s in 1:sweeps
+        for _ in 1:N
+            id = rand(rng, 1:N)
+            attempt!(st, id, β, rng)
+        end
+
+        if s % sample_every == 0
+            push!(times, s)
+            dx2 = @views st.disp[1,:].^2
+            dy2 = @views st.disp[2,:].^2
+            dz2 = @views st.disp[3,:].^2
+            push!(msd_t, Statistics.mean(dx2 .+ dy2 .+ dz2))
+        end
+    end
+
+    return times, msd_t
+end
