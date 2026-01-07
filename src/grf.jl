@@ -1,4 +1,4 @@
-import LinearAlgebra, IterativeSolvers, Random, Printf, FFTW, Statistics
+import LinearAlgebra, IterativeSolvers, Random, Printf, FFTW, Statistics, CSV, LsqFit
 
 function kfreq(n::Int, L::Int)
     n <= L ÷ 2 ? (2π*n/L) : (2π*(n-L)/L)
