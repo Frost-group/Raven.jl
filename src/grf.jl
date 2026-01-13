@@ -231,5 +231,74 @@ function scan_disorder(outfile::AbstractString;
     return nothing
 end
 
+
+function scan_disorder2(outfile::AbstractString;
+    σ_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 1.0, 2.0, 4.0],
+    β_values = [0.5, 1.0, 2.0, 4.0],
+    ξ::Float64 = 2.0,
+    a::Int = 20, b::Int = 20, c::Int = 20,
+    N::Int = 500,
+    sweeps::Int = 100_000,
+    sample_every::Int = 100,
+    lag_sweeps::Int = 200,
+    seed::Int = 42
+)
+    mkpath(dirname(outfile))
+
+    σs = sort(unique(Float64.(σ_values)))
+    βs = Float64.(β_values)
+
+    # master RNG for reproducibility
+    rng_master = MersenneTwister(seed)
+
+    # IMPORTANT: same disorder realisation per σ across β
+    σ_seed = Dict{Float64,UInt}()
+    for σ in σs
+        σ_seed[σ] = rand(rng_master, UInt)
+    end
+
+    open(outfile, "w") do io
+        println(io, "sigma\txi\tbeta\tT\tchi0\tS\tu\tD\tD_over_D0\tacc_ratio\tlag_sweeps\ta\tb\tc\tN\tsweeps\tsample_every\tseed")
+
+        for β in βs
+            T = 1.0/β
+            D0 = NaN
+
+            for σ in σs
+                # deterministic init per σ (same V + same initial positions for all β)
+                rng_init = MersenneTwister(σ_seed[σ])
+                st = initialization(a,b,c,N; σ=σ, ξ=ξ, rng=rng_init)
+
+                χ0, S = disorder_strength(st.V, β; d=3)
+                u = β * sqrt(χ0)   # common “disorder parameter” used in this literature
+
+                # MC rng (separate stream so init doesn't affect dynamics)
+                rng_mc = MersenneTwister(rand(rng_master, UInt))
+                out = run!(st; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng_mc)
+                D = D_from_msdlag(out.msdτ, out.lag; d=3)
+
+                if σ == 0.0
+                    D0 = D
+                end
+                DoverD0 = (isfinite(D0) && D0 != 0.0) ? D / D0 : NaN
+
+                @printf(io, "%.6g\t%.6g\t%.6g\t%.6g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.6g\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n",
+                        σ, ξ, β, T, χ0, S, u, D, DoverD0, out.acc_ratio, out.lag, a,b,c,N,sweeps,sample_every,seed)
+
+                @printf("β=%.3g (T=%.4g)  σ=%.3g  S=%.3g  u=%.3g  D=%.3g  D/D0=%.3g  acc=%.3f\n",
+                        β, T, σ, S, u, D, DoverD0, out.acc_ratio)
+            end
+
+            
+            # blank line between β blocks (gnuplot likes this)
+            println(io)
+        end
+    end
+
+    @printf("Wrote %s\n", outfile)
+    return nothing
+end
+
+
 # Example:
 # scan_disorder("data/grf_disorder_vs_diffusion.tsv"; σ_values=[0.1,0.5,1,2,4], ξ=2.0, β=1.0, a=20,b=20,c=20,N=500,sweeps=20000,sample_every=10,lag_sweeps=500,seed=42)
