@@ -62,12 +62,12 @@ Base.@kwdef mutable struct State
 end
 
 function initialization(a::Int, b::Int, c::Int, N::Int; σ=1.0, ξ=2.0, rng=Random.default_rng())
-    S = a*b*c
+    Size = a*b*c
     pos  = Matrix{Int}(undef, N, 3)
     occ  = fill(0, a, b, c)
     disp = zeros(Int64, 3, N)
 
-    picks = randperm(rng, S)[1:N]          # OK for moderate sizes
+    picks = randperm(rng, Size)[1:N]          # OK for moderate sizes
     CI = CartesianIndices((a,b,c))
     @inbounds for id in 1:N
         x,y,z = Tuple(CI[picks[id]])
@@ -241,18 +241,26 @@ function production_run(outfile; S_max = 20, ξ = 2.0, βs = [0.0005, 0.001, 0.0
 )
     mkpath(dirname(outfile))
 
-    S_values = collect(0:0.1:S_max)
+    S_values = collect(0:0.2:S_max)
 
     for β in βs
-        σs = sqrt(3S_values)/βs[β]
+        σs = sqrt.(3 .* S_values) ./ β 
+        
+        for i in eachindex(σs)
+            σ = σs[i]
 
-        system = initialization(a, b, c, N; σ=σs[β], ξ=ξ, rng=seed)
+            rng = MersenneTwister(seed)
+            
+            system = initialization(a, b, c, N; σ=σ, ξ=ξ, rng=rng)
 
-        out = run!(system; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=seed)
+            out = run!(system; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng)
 
-        D = D_from_msdlag(out.msdτ, out.lag; d=3)
+            D = D_from_msdlag(out.msdτ, out.lag; d=3)
 
-        #logging here!
+            println("D= $D.")
+            #logging here!
+        end    
+    end
 end
 
 function scan_disorder2(outfile::AbstractString;
