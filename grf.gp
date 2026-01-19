@@ -4,7 +4,7 @@ set key left top
 set xlabel "S = β^2 χ0 / 3"
 set ylabel "Diffusion coefficient D"
 set title "GRF disorder vs diffusion (ξ=2, β=1)"
-set logscale x
+#set logscale x
 # set logscale y   # uncomment if you want log D too
 
 set term pngcairo size 900,600

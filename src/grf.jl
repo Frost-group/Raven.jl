@@ -231,6 +231,29 @@ function scan_disorder(outfile::AbstractString;
     return nothing
 end
 
+function production_run(outfile; S_max = 20, ξ = 2.0, βs = [0.0005, 0.001, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
+    a = 20, b = 20, c = 20,
+    N = 500,
+    sweeps = 100000,
+    sample_every = 10,
+    lag_sweeps = 200,
+    seed = 1
+)
+    mkpath(dirname(outfile))
+
+    S_values = collect(0:0.1:S_max)
+
+    for β in βs
+        σs = sqrt(3S_values)/βs[β]
+
+        system = initialization(a, b, c, N; σ=σs[β], ξ=ξ, rng=seed)
+
+        out = run!(system; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=seed)
+
+        D = D_from_msdlag(out.msdτ, out.lag; d=3)
+
+        #logging here!
+end
 
 function scan_disorder2(outfile::AbstractString;
     σ_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 1.0, 2.0, 4.0],
@@ -289,7 +312,7 @@ function scan_disorder2(outfile::AbstractString;
                         β, T, σ, S, u, D, DoverD0, out.acc_ratio)
             end
 
-            
+
             # blank line between β blocks (gnuplot likes this)
             println(io)
         end
@@ -302,3 +325,66 @@ end
 
 # Example:
 # scan_disorder("data/grf_disorder_vs_diffusion.tsv"; σ_values=[0.1,0.5,1,2,4], ξ=2.0, β=1.0, a=20,b=20,c=20,N=500,sweeps=20000,sample_every=10,lag_sweeps=500,seed=42)
+
+
+function scan_disorder_ugrid(outfile::AbstractString;
+    u_values = [0.0, 0.05, 0.1, 0.2, 0.4, 0.8, 1.6, 3.2, 6.4, 12.8, 25.6],
+    β_values = [0.0005, 0.001, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
+    ξ::Float64 = 2.0,
+    a::Int = 20, b::Int = 20, c::Int = 20,
+    N::Int = 100,
+    sweeps::Int = 100_000,
+    sample_every::Int = 100,
+    lag_sweeps::Int = 200,
+    seed::Int = 42
+)
+    mkpath(dirname(outfile))
+
+    us = Float64.(u_values)
+    βs = Float64.(β_values)
+
+    rng_master = MersenneTwister(seed)
+
+    # Same disorder realisation per u-index across β (seeded by point index)
+    u_seed = [rand(rng_master, UInt) for _ in 1:length(us)]
+
+    open(outfile, "w") do io
+        println(io, "sigma\txi\tbeta\tT\tchi0\tS\tu\tD\tD_over_D0\tacc_ratio\tlag_sweeps\ta\tb\tc\tN\tsweeps\tsample_every\tseed")
+
+        for β in βs
+            T = 1.0 / β
+            D0 = NaN
+
+            for (i, u_target) in pairs(us)
+                σ = (u_target == 0.0) ? 0.0 : u_target / β
+
+                # deterministic init per u-point (same GRF realisation across β)
+                rng_init = MersenneTwister(u_seed[i])
+                st = initialization(a,b,c,N; σ=σ, ξ=ξ, rng=rng_init)
+
+                χ0, S = disorder_strength(st.V, β; d=3)
+                u = β * sqrt(χ0)   # measured u (≈ u_target, small finite-size noise)
+
+                rng_mc = MersenneTwister(rand(rng_master, UInt))
+                out = run!(st; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng_mc)
+                D = D_from_msdlag(out.msdτ, out.lag; d=3)
+
+                if i == 1 && u_target == 0.0
+                    D0 = D
+                end
+                DoverD0 = (isfinite(D0) && D0 != 0.0) ? D / D0 : NaN
+
+                @printf(io, "%.6g\t%.6g\t%.6g\t%.6g\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.6g\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n",
+                        σ, ξ, β, T, χ0, S, u, D, DoverD0, out.acc_ratio, out.lag, a,b,c,N,sweeps,sample_every,seed)
+
+                @printf("β=%.3g (T=%.4g)  u_target=%.3g  σ=%.3g  S=%.3g  u=%.3g  D=%.3g  D/D0=%.3g  acc=%.3f\n",
+                        β, T, u_target, σ, S, u, D, DoverD0, out.acc_ratio)
+            end
+
+            println(io) # blank line between β blocks
+        end
+    end
+
+    @printf("Wrote %s\n", outfile)
+    return nothing
+end
