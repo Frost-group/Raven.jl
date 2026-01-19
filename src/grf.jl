@@ -231,36 +231,45 @@ function scan_disorder(outfile::AbstractString;
     return nothing
 end
 
-function production_run(outfile; S_max = 20, ξ = 2.0, βs = [0.0005, 0.001, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
+function production_run(outpath; S_max = 20, ξ = 2.0, βs = [0.0005, 0.001, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
     a = 20, b = 20, c = 20,
-    N = 500,
+    N = 10,
     sweeps = 100000,
     sample_every = 10,
     lag_sweeps = 200,
     seed = 1
 )
-    mkpath(dirname(outfile))
+    mkpath(dirname(outpath))
 
     S_values = collect(0:0.2:S_max)
 
-    for β in βs
-        σs = sqrt.(3 .* S_values) ./ β 
-        
-        for i in eachindex(σs)
-            σ = σs[i]
+    open(outpath, "w") do io
+        println(io, "beta\tS\tD")
 
-            rng = MersenneTwister(seed)
+        for β in βs
+            σs = sqrt.(3 .* S_values) ./ β 
             
-            system = initialization(a, b, c, N; σ=σ, ξ=ξ, rng=rng)
+            for i in eachindex(σs)
+                σ = σs[i]
+                S = (β^2 * σ^2) / 3
 
-            out = run!(system; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng)
+                rng = MersenneTwister(seed)
+                
+                system = initialization(a, b, c, N; σ=σ, ξ=ξ, rng=rng)
 
-            D = D_from_msdlag(out.msdτ, out.lag; d=3)
+                out = run!(system; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng)
 
-            println("D= $D.")
-            #logging here!
-        end    
+                D = D_from_msdlag(out.msdτ, out.lag; d=3)
+                
+                Printf.@printf(io, "%.6g\t%.6g\t%.12g\n", β, S, D)
+                println("simulation $i is done.")
+            end
+            println(io)
+            println(io)
+        end
     end
+    Printf.@printf("Wrote %s\n", outpath)
+    return nothing
 end
 
 function scan_disorder2(outfile::AbstractString;
