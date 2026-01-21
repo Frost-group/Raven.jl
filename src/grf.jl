@@ -242,13 +242,17 @@ function production_run(outpath; S_max = 20, ξ = 2.0, βs = [0.0005, 0.001, 0.0
     mkpath(dirname(outpath))
 
     S_values = collect(0:0.2:S_max)
+    rng0 = MersenneTwister(seed)
+    D0system = initialization(a, b, c, N; σ=0, ξ=ξ, rng=rng0)
+    D0run = run!(D0system; β=0.0, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng0)
+    D0 = D_from_msdlag(D0run.msdτ, D0run.lag; d=3)
 
     open(outpath, "w") do io
         println(io, "beta\tS\tD")
 
         for β in βs
             σs = sqrt.(3 .* S_values) ./ β 
-            
+
             for i in eachindex(σs)
                 σ = σs[i]
                 S = (β^2 * σ^2) / 3
@@ -260,8 +264,9 @@ function production_run(outpath; S_max = 20, ξ = 2.0, βs = [0.0005, 0.001, 0.0
                 out = run!(system; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng)
 
                 D = D_from_msdlag(out.msdτ, out.lag; d=3)
-                
-                Printf.@printf(io, "%.6g\t%.6g\t%.12g\n", β, S, D)
+                normD = D / D0
+
+                Printf.@printf(io, "%.6g\t%.6g\t%.12g\n", β, S, normD)
                 println("simulation $i is done.")
             end
             println(io)
