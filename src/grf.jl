@@ -277,6 +277,56 @@ function production_run(outpath; S_max = 20, ξ = 2.0, βs = [0.0005, 0.001, 0.0
     return nothing
 end
 
+function correlation_scan(outpath; S_max = 20.0, ξ_max = 10.0, β = 0.02,
+    a = 20, b = 20, c = 20,
+    N = 10,
+    sweeps = 100_000,
+    sample_every = 10,
+    lag_sweeps = 200,
+    seed = 1
+)
+    mkpath(dirname(outpath))
+
+    ξ_values = collect(0.0:1.0:ξ_max)
+    S_values = collect(0.0:0.2:S_max)
+
+    # --- D0 (no disorder): V == 0, so ξ is irrelevant; use same β for consistency ---
+    rng0 = MersenneTwister(seed)
+    st0  = initialization(a, b, c, N; σ=0.0, ξ=1.0, rng=rng0)
+    out0 = run!(st0; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng0)
+    D0   = D_from_msdlag(out0.msdτ, out0.lag; d=3)
+
+    open(outpath, "w") do io
+        println(io, "xi\tS\tD\tD_over_D0")
+
+        for ξ in ξ_values
+            for S in S_values
+                # choose σ so target S ≈ β^2 σ^2 / 3 (since var(V) ≈ σ^2 by construction)
+                σ = (S == 0.0) ? 0.0 : sqrt(3S) / β
+
+                rng = MersenneTwister(seed)  # reset => reproducible per (ξ,S)
+                st  = initialization(a, b, c, N; σ=σ, ξ=ξ, rng=rng)
+
+                χ0, S_meas = disorder_strength(st.V, β; d=3)
+
+                out = run!(st; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng)
+                D   = D_from_msdlag(out.msdτ, out.lag; d=3)
+                normD = D / D0
+
+                @printf(io, "%.6g\t%.6g\t%.6g\t%.12g\n",
+                        ξ, S_meas, D, normD)
+                println("simulation $S is done.")
+            end
+
+            println(io)  # blank line between ξ blocks (gnuplot "index" friendly)
+            println(io)
+        end
+    end
+
+    @printf("Wrote %s\n", outpath)
+    return nothing
+end
+
 function scan_disorder2(outfile::AbstractString;
     σ_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 1.0, 2.0, 4.0],
     β_values = [0.5, 1.0, 2.0, 4.0],
