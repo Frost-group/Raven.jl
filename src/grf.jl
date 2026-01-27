@@ -318,7 +318,7 @@ function correlation_scan(outpath; S_max = 20.0, ξ_max = 10.0, β = 0.02,
     H0   = haven_ratio(D0, Db0)
 
     open(outpath, "w") do io
-        println(io, "xi\tS\tDtr\tDb\tH\tD_over_D0")
+        println(io, "xi\tS\tDtr\tDb\tH\tDtr_norm\tDb_norm")
 
         for ξ in ξ_values
             for S in S_values
@@ -334,10 +334,11 @@ function correlation_scan(outpath; S_max = 20.0, ξ_max = 10.0, β = 0.02,
                 Dtr = D_from_msdlag(out.msdτ, out.lag; d=3)
                 Db  = Dbulk_from_msdlag(out.msdτ_bulk, out.lag, out.N; d=3)
                 H   = haven_ratio(Dtr, Db)
-                normD = Dtr / D0
+                normDtr = Dtr / D0
+                normDb  = Db / D0
 
-                @printf(io, "%.6g\t%.6g\t%.6g\t%.6g\t%.6g\t%.12g\n",
-                        ξ, S_meas, Dtr, Db, H, normD)
+                @printf(io, "%.6g\t%.6g\t%.6g\t%.6g\t%.6g\t%.6g\t%.12g\n",
+                        ξ, S_meas, Dtr, Db, H, normDtr, normDb)
                 println("simulation $S is done.")
             end
 

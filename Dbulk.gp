@@ -14,4 +14,4 @@ set output "Dbulk_scan.png"
 
 #f(x) = exp(-x)
 
-plot for [i=0:N-1] file index i using 2:4 with lines title sprintf("xi=%g", i)
+plot for [i=0:N-1] file index i using 2:7 with lines title sprintf("xi=%g", i)
