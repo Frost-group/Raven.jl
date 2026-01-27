@@ -123,19 +123,27 @@ function push_and_msd!(ring::Ring, disp::Matrix{Int64}, lag_samples::Int)
     idx = (ring.t-1) % L + 1
     @inbounds ring.buf[idx, :, :] .= disp
 
-    ring.t <= lag_samples && return NaN
+    ring.t <= lag_samples && return (NaN, NaN)
 
     idx0 = (ring.t-1-lag_samples) % L + 1
     N = size(disp,2)
 
-    total = 0.0
+    total_tr = 0.0
+    sx = 0.0; sy = 0.0; sz = 0.0
+
     @inbounds for i in 1:N
         dx = Float64(disp[1,i] - ring.buf[idx0,1,i])
         dy = Float64(disp[2,i] - ring.buf[idx0,2,i])
         dz = Float64(disp[3,i] - ring.buf[idx0,3,i])
-        total += dx*dx + dy*dy + dz*dz
+        
+        total_tr += dx*dx + dy*dy + dz*dz
+        sx += dx; sy += dy; sz += dz
     end
-    return total / N
+
+    msd_tr = total_tr / N
+    msd_bulk = sx*sx + sy*sy + sz*sz
+
+    return (msd_tr, msd_bulk)
 end
 
 function run!(st::State; β=1.0, sweeps=10000, sample_every=10, lag_sweeps=200, rng=Random.default_rng())
@@ -149,6 +157,7 @@ function run!(st::State; β=1.0, sweeps=10000, sample_every=10, lag_sweeps=200, 
     times = Int[]
     msd0  = Float64[]        # MSD from origin (cheap)
     msdτ  = Float64[]        # time-origin averaged MSD at fixed lag τ
+    msdτ_bulk  = Float64[]
 
     total_attempts = 0
     total_accepts  = 0
@@ -171,13 +180,15 @@ function run!(st::State; β=1.0, sweeps=10000, sample_every=10, lag_sweeps=200, 
             end
             push!(msd0, acc / N)
 
-            # fixed-lag, time-origin averaged MSD
-            push!(msdτ, push_and_msd!(ring, st.disp, lag_samples))
+            # fixed-lag tracer + bulk
+            tr, bulk = push_and_msd!(ring, st.disp, lag_samples)
+            push!(msdτ, tr)
+            push!(msdτ_bulk, bulk)
         end
     end
 
     acc_ratio = total_accepts / max(1, total_attempts)
-    return (times=times, msd0=msd0, msdτ=msdτ, lag=eff_lag_sweeps, acc_ratio=acc_ratio)
+    return (times=times, msd0=msd0, msdτ=msdτ, msdτ_bulk=msdτ_bulk, lag=eff_lag_sweeps, acc_ratio=acc_ratio, N=N)
 end
 
 # diffusion estimate from fixed-lag msdτ series (ignore early NaNs)
@@ -186,6 +197,14 @@ function D_from_msdlag(msdτ::Vector{Float64}, lag_sweeps::Int; d::Int=3)
     isempty(vals) && return NaN
     return mean(vals) / (2 * d * lag_sweeps)
 end
+
+function Dbulk_from_msdlag(msdτ_bulk, lag_sweeps, N::Int; d::Int=3)
+    vals = filter(isfinite, msdτ_bulk)
+    isempty(vals) && return NaN
+    return mean(vals) / (2 * d * lag_sweeps * N)
+end
+
+haven_ratio(Dtr, Dbulk) = (isfinite(Dtr) && isfinite(Dbulk) && Dbulk != 0.0) ? Dtr/Dbulk : NaN
 
 # ---------------------------
 #  Scan + TSV logging: disorder vs diffusion
@@ -279,8 +298,8 @@ end
 
 function correlation_scan(outpath; S_max = 20.0, ξ_max = 10.0, β = 0.02,
     a = 20, b = 20, c = 20,
-    N = 10,
-    sweeps = 100_000,
+    N = 100,
+    sweeps = 100000,
     sample_every = 10,
     lag_sweeps = 200,
     seed = 1
@@ -295,9 +314,11 @@ function correlation_scan(outpath; S_max = 20.0, ξ_max = 10.0, β = 0.02,
     st0  = initialization(a, b, c, N; σ=0.0, ξ=1.0, rng=rng0)
     out0 = run!(st0; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng0)
     D0   = D_from_msdlag(out0.msdτ, out0.lag; d=3)
+    Db0  = Dbulk_from_msdlag(out0.msdτ, out0.lag, out0.N; d=3)
+    H0   = haven_ratio(D0, Db0)
 
     open(outpath, "w") do io
-        println(io, "xi\tS\tD\tD_over_D0")
+        println(io, "xi\tS\tDtr\tDb\tH\tD_over_D0")
 
         for ξ in ξ_values
             for S in S_values
@@ -310,11 +331,13 @@ function correlation_scan(outpath; S_max = 20.0, ξ_max = 10.0, β = 0.02,
                 χ0, S_meas = disorder_strength(st.V, β; d=3)
 
                 out = run!(st; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng)
-                D   = D_from_msdlag(out.msdτ, out.lag; d=3)
-                normD = D / D0
+                Dtr = D_from_msdlag(out.msdτ, out.lag; d=3)
+                Db  = Dbulk_from_msdlag(out.msdτ_bulk, out.lag, out.N; d=3)
+                H   = haven_ratio(Dtr, Db)
+                normD = Dtr / D0
 
-                @printf(io, "%.6g\t%.6g\t%.6g\t%.12g\n",
-                        ξ, S_meas, D, normD)
+                @printf(io, "%.6g\t%.6g\t%.6g\t%.6g\t%.6g\t%.12g\n",
+                        ξ, S_meas, Dtr, Db, H, normD)
                 println("simulation $S is done.")
             end
 
