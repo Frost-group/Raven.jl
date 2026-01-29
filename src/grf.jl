@@ -351,6 +351,16 @@ function correlation_scan(outpath; S_max = 20.0, ξ_max = 10.0, β = 0.02,
     return nothing
 end
 
+function particle_scan(outpath; S_max = , ξ_max = 10.0, β = 0.02,
+    a = 20, b = 20, c = 20,
+    N = 100,
+    sweeps = 100000,
+    sample_every = 10,
+    lag_sweeps = 200,
+    seed = 1
+)
+end
+
 function scan_disorder2(outfile::AbstractString;
     σ_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 1.0, 2.0, 4.0],
     β_values = [0.5, 1.0, 2.0, 4.0],
