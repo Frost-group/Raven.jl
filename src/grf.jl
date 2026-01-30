@@ -366,38 +366,40 @@ function particle_scan(outpath; S_max = 20.0, ξ = 3.0, β = 0.02,
     N_values[1] = 1
     S_values = collect(0.0:4.0:S_max)
 
-for i in N_values
+    for i in N_values
+        N = N_values[i]
         rng0 = MersenneTwister(seed)
-        st0  = initialization(a, b, c, N_values[i]; σ=0.0, ξ=ξ, rng=rng0)
+        st0  = initialization(a, b, c, N; σ=0.0, ξ=ξ, rng=rng0)
         out0 = run!(st0; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng0)
         D0   = D_from_msdlag(out0.msdτ, out0.lag; d=3)
         Db0  = Dbulk_from_msdlag(out0.msdτ, out0.lag, out0.N; d=3)
         H0   = haven_ratio(D0, Db0)    
 
-    open(outpath, "w") do io
-        println(io, "xi\tS\tDtr\tDb\tH\tDtr_norm\tDb_norm")
+        open(outpath, "w") do io
+            println(io, "xi\tS\tDtr\tDb\tH\tDtr_norm\tDb_norm")
         
-        for S in S_values
-            σ = (S == 0.0) ? 0.0 : sqrt(3S) / β
-            rng = MersenneTwister(seed)
-            st = initialization(a, b, c, N; σ=σ, ξ=ξ, rng=rng)
+            for S in S_values
+                σ = (S == 0.0) ? 0.0 : sqrt(3S) / β
+                rng = MersenneTwister(seed)
+                st = initialization(a, b, c, N; σ=σ, ξ=ξ, rng=rng)
 
-            χ0, S_meas = disorder_strength(st.V, β; d=3)
+                χ0, S_meas = disorder_strength(st.V, β; d=3)
 
-            out = run!(st; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng)
-            Dtr = D_from_msdlag(out.msdτ, out.lag; d=3)
-            Db = Dbulk_from_msdlag(out.msd_bulk, out.lag, out.N; d=3)
-            H = haven_ratio(Dtr, Db)
-            normDtr = Dtr / D0
-            normDb = Db / D0
+                out = run!(st; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng)
+                Dtr = D_from_msdlag(out.msdτ, out.lag; d=3)
+                Db = Dbulk_from_msdlag(out.msd_bulk, out.lag, out.N; d=3)
+                H = haven_ratio(Dtr, Db)
+                normDtr = Dtr / D0
+                normDb = Db / D0
 
-            @printf(io, "%.6g\t%.6g\t%.6g\t%.6g\t%.6g\t%.6g\t%.12g\n",
-                    ξ, S_meas, Dtr, Db, H, normDtr, normDb)
-            println("simulation for S = $S is done.")
+                @printf(io, "%.6g\t%.6g\t%.6g\t%.6g\t%.6g\t%.6g\t%.12g\n",
+                        N, S_meas, Dtr, Db, H, normDtr, normDb)
+                println("simulation for S = $S is done.")
+            println(io)
+            println(io)
+            end
         end
-
-        println(io)
-        println(io)
+        println("Finished simulations for N = $N.")
     end
 
     @printf("Wrote %s\n", outpath)
