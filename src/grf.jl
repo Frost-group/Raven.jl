@@ -351,15 +351,60 @@ function correlation_scan(outpath; S_max = 20.0, ξ_max = 10.0, β = 0.02,
     return nothing
 end
 
-function particle_scan(outpath; S_max = , ξ_max = 10.0, β = 0.02,
+function particle_scan(outpath; S_max = 20.0, ξ = 3.0, β = 0.02,
     a = 20, b = 20, c = 20,
-    N = 100,
+    Nmax = 8000,
     sweeps = 100000,
     sample_every = 10,
     lag_sweeps = 200,
     seed = 1
 )
+
+    mkpath(dirname(outpath))
+
+    N_values = round.(Int, range(0,Nmax); length = 20)
+    N_values[1] = 1
+    S_values = collect(0.0:4.0:S_max)
+
+for i in N_values
+        rng0 = MersenneTwister(seed)
+        st0  = initialization(a, b, c, N_values[i]; σ=0.0, ξ=ξ, rng=rng0)
+        out0 = run!(st0; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng0)
+        D0   = D_from_msdlag(out0.msdτ, out0.lag; d=3)
+        Db0  = Dbulk_from_msdlag(out0.msdτ, out0.lag, out0.N; d=3)
+        H0   = haven_ratio(D0, Db0)    
+
+    open(outpath, "w") do io
+        println(io, "xi\tS\tDtr\tDb\tH\tDtr_norm\tDb_norm")
+        
+        for S in S_values
+            σ = (S == 0.0) ? 0.0 : sqrt(3S) / β
+            rng = MersenneTwister(seed)
+            st = initialization(a, b, c, N; σ=σ, ξ=ξ, rng=rng)
+
+            χ0, S_meas = disorder_strength(st.V, β; d=3)
+
+            out = run!(st; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng)
+            Dtr = D_from_msdlag(out.msdτ, out.lag; d=3)
+            Db = Dbulk_from_msdlag(out.msd_bulk, out.lag, out.N; d=3)
+            H = haven_ratio(Dtr, Db)
+            normDtr = Dtr / D0
+            normDb = Db / D0
+
+            @printf(io, "%.6g\t%.6g\t%.6g\t%.6g\t%.6g\t%.6g\t%.12g\n",
+                    ξ, S_meas, Dtr, Db, H, normDtr, normDb)
+            println("simulation for S = $S is done.")
+        end
+
+        println(io)
+        println(io)
+    end
+
+    @printf("Wrote %s\n", outpath)
+    return nothing
 end
+
+
 
 function scan_disorder2(outfile::AbstractString;
     σ_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 1.0, 2.0, 4.0],
