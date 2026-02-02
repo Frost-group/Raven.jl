@@ -382,7 +382,7 @@ function particle_scan(outpath; S = 4.0, ξ = 3.0, β_max = 1.0,
 
             for j in eachindex(N_values)
                 N = N_values[j]
-                σ = (S == 0.0) ? 0.0 : sqrt(3S) / β
+                σ = sqrt(3S)
                 rng = MersenneTwister(seed)
                 st = initialization(a, b, c, N; σ=σ, ξ=ξ, rng=rng)
 
@@ -401,13 +401,86 @@ function particle_scan(outpath; S = 4.0, ξ = 3.0, β_max = 1.0,
             end
             println(io)
             println(io)
-            println("Finished simulations for β = $β.")
+            #println("Finished simulations for β = $β.")
         end
     end
 
     @printf("Wrote %s\n", outpath)
     return nothing
 end
+
+
+function S_scan_N_vs_Hr(outpath;
+    β = 0.02,
+    ξ = 3.0,
+    S_max = 20.0,
+    S_step = 0.2,
+    a = 20, b = 20, c = 20,
+    Nmax = 8000,
+    Nstep = 400,
+    sweeps = 100000,
+    sample_every = 10,
+    lag_sweeps = 200,
+    seed = 1
+)
+    mkpath(dirname(outpath))
+
+    # N grid
+    N_values = collect(0:Nstep:Nmax)
+    N_values[1] = 1
+
+    # S grid
+    S_values = collect(0.0:S_step:S_max)
+
+    # --- Baseline at same β: no disorder (σ=0) ---
+    rng0 = MersenneTwister(hash((seed, :baseline)))
+    st0  = initialization(a, b, c, 1; σ=0.0, ξ=ξ, rng=rng0)
+    out0 = run!(st0; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng0)
+
+    D0  = D_from_msdlag(out0.msdτ, out0.lag; d=3)
+    Db0 = Dbulk_from_msdlag(out0.msdτ_bulk, out0.lag, out0.N; d=3)
+    H0  = haven_ratio(D0, Db0)
+
+    open(outpath, "w") do io
+        # global header (one time)
+        println(io, "# columns: N\tS\tbeta\tHr\tDtr\tDb\tDtr_norm\tDb_norm\tS_meas")
+        println(io, "# baseline: beta=$(β), D0=$(D0), H0=$(H0)")
+
+        for S in S_values
+            # start of block (gnuplot index-friendly)
+            println(io, "# ---- S = $(S) ----")
+
+            for N in N_values
+                # If your disorder builder is such that var(V) ≈ σ^2, then S ≈ β^2 σ^2 / 3
+                σ = (S == 0.0) ? 0.0 : sqrt(3S) / β
+
+                rng = MersenneTwister(hash((seed, S, N)))
+                st  = initialization(a, b, c, N; σ=σ, ξ=ξ, rng=rng)
+
+                # (optional but useful to log)
+                _, S_meas = disorder_strength(st.V, β; d=3)
+
+                out = run!(st; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng)
+
+                Dtr = D_from_msdlag(out.msdτ, out.lag; d=3)
+                Db  = Dbulk_from_msdlag(out.msdτ_bulk, out.lag, out.N; d=3)
+                Hr  = haven_ratio(Dtr, Db)
+
+                @printf(io, "%d\t%.6g\t%.6g\t%.6g\t%.6g\t%.6g\t%.12g\t%.12g\t%.6g\n",
+                        N, S, β, Hr, Dtr, Db, Dtr/D0, Db/D0, S_meas)
+
+                println("done: S=$(S), N=$(N)")
+            end
+
+            # two blank lines => new "index" block for gnuplot
+            println(io); println(io)
+        end
+    end
+
+    @printf("Wrote %s\n", outpath)
+    return nothing
+end
+
 
 
 function scan_disorder2(outfile::AbstractString;
