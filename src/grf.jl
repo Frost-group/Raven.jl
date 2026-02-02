@@ -414,7 +414,7 @@ function S_scan_N_vs_Hr(outpath;
     β = 0.02,
     ξ = 3.0,
     S_max = 20.0,
-    S_step = 0.2,
+    S_step = 4.0,
     a = 20, b = 20, c = 20,
     Nmax = 8000,
     Nstep = 400,
