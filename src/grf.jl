@@ -351,7 +351,7 @@ function correlation_scan(outpath; S_max = 20.0, ξ_max = 10.0, β = 0.02,
     return nothing
 end
 
-function particle_scan(outpath; S_max = 20.0, ξ = 3.0, β = 0.02,
+function particle_scan(outpath; S = 4.0, ξ = 3.0, β_max = 1.0,
     a = 20, b = 20, c = 20,
     Nmax = 8000,
     sweeps = 100000,
@@ -362,23 +362,26 @@ function particle_scan(outpath; S_max = 20.0, ξ = 3.0, β = 0.02,
 
     mkpath(dirname(outpath))
 
-    N_values = round.(Int, range(0,Nmax); length = 20)
+    N_values = collect(0:400:Nmax)
     N_values[1] = 1
-    S_values = collect(0.0:4.0:S_max)
+    β_values = collect(0.0:0.05:β_max)
+    β_values[1] = 0.01
 
-    for i in N_values
-        N = N_values[i]
-        rng0 = MersenneTwister(seed)
-        st0  = initialization(a, b, c, N; σ=0.0, ξ=ξ, rng=rng0)
-        out0 = run!(st0; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng0)
-        D0   = D_from_msdlag(out0.msdτ, out0.lag; d=3)
-        Db0  = Dbulk_from_msdlag(out0.msdτ, out0.lag, out0.N; d=3)
-        H0   = haven_ratio(D0, Db0)    
+    open(outpath, "w") do io
+        println(io, "N\tbeta\tDtr\tDb\tH\tDtr_norm\tDb_norm")
 
-        open(outpath, "w") do io
-            println(io, "xi\tS\tDtr\tDb\tH\tDtr_norm\tDb_norm")
-        
-            for S in S_values
+        for i in eachindex(β_values)
+            β = β_values[i]
+            N = 1
+            rng0 = MersenneTwister(seed)
+            st0  = initialization(a, b, c, N; σ=0.0, ξ=ξ, rng=rng0)
+            out0 = run!(st0; β=0.05, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng0)
+            D0   = D_from_msdlag(out0.msdτ, out0.lag; d=3)
+            Db0  = Dbulk_from_msdlag(out0.msdτ, out0.lag, out0.N; d=3)
+            H0   = haven_ratio(D0, Db0)   
+
+            for j in eachindex(N_values)
+                N = N_values[j]
                 σ = (S == 0.0) ? 0.0 : sqrt(3S) / β
                 rng = MersenneTwister(seed)
                 st = initialization(a, b, c, N; σ=σ, ξ=ξ, rng=rng)
@@ -387,25 +390,24 @@ function particle_scan(outpath; S_max = 20.0, ξ = 3.0, β = 0.02,
 
                 out = run!(st; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng)
                 Dtr = D_from_msdlag(out.msdτ, out.lag; d=3)
-                Db = Dbulk_from_msdlag(out.msd_bulk, out.lag, out.N; d=3)
+                Db = Dbulk_from_msdlag(out.msdτ_bulk, out.lag, out.N; d=3)
                 H = haven_ratio(Dtr, Db)
                 normDtr = Dtr / D0
                 normDb = Db / D0
 
                 @printf(io, "%.6g\t%.6g\t%.6g\t%.6g\t%.6g\t%.6g\t%.12g\n",
-                        N, S_meas, Dtr, Db, H, normDtr, normDb)
-                println("simulation for S = $S is done.")
-            println(io)
-            println(io)
+                        N, β, Dtr, Db, H, normDtr, normDb)
+                println("simulation for N = $N is done.")
             end
+            println(io)
+            println(io)
+            println("Finished simulations for β = $β.")
         end
-        println("Finished simulations for N = $N.")
     end
 
     @printf("Wrote %s\n", outpath)
     return nothing
 end
-
 
 
 function scan_disorder2(outfile::AbstractString;
