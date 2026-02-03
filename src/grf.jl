@@ -298,7 +298,7 @@ end
 
 function correlation_scan(outpath; S_max = 20.0, ξ_max = 10.0, β = 0.02,
     a = 20, b = 20, c = 20,
-    N = 100,
+    N = 6000,
     sweeps = 100000,
     sample_every = 10,
     lag_sweeps = 200,
@@ -365,7 +365,7 @@ function particle_scan(outpath; S = 4.0, ξ = 3.0, β_max = 1.0,
     N_values = collect(0:400:Nmax)
     N_values[1] = 1
     β_values = collect(0.0:0.2:β_max)
-    β_values[1] = 0.0
+    β_values[1] = 0.01
     
     rng0 = MersenneTwister(seed)
     rng = MersenneTwister(seed)
