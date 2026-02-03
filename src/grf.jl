@@ -364,8 +364,11 @@ function particle_scan(outpath; S = 4.0, ξ = 3.0, β_max = 1.0,
 
     N_values = collect(0:400:Nmax)
     N_values[1] = 1
-    β_values = collect(0.0:0.05:β_max)
-    β_values[1] = 0.01
+    β_values = collect(0.0:0.2:β_max)
+    β_values[1] = 0.0
+    
+    rng0 = MersenneTwister(seed)
+    rng = MersenneTwister(seed)
 
     open(outpath, "w") do io
         println(io, "N\tbeta\tDtr\tDb\tH\tDtr_norm\tDb_norm")
@@ -373,7 +376,7 @@ function particle_scan(outpath; S = 4.0, ξ = 3.0, β_max = 1.0,
         for i in eachindex(β_values)
             β = β_values[i]
             N = 1
-            rng0 = MersenneTwister(seed)
+            #rng0 = MersenneTwister(seed)
             st0  = initialization(a, b, c, N; σ=0.0, ξ=ξ, rng=rng0)
             out0 = run!(st0; β=0.05, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng0)
             D0   = D_from_msdlag(out0.msdτ, out0.lag; d=3)
@@ -383,7 +386,7 @@ function particle_scan(outpath; S = 4.0, ξ = 3.0, β_max = 1.0,
             for j in eachindex(N_values)
                 N = N_values[j]
                 σ = sqrt(3S)
-                rng = MersenneTwister(seed)
+                #rng = MersenneTwister(seed)
                 st = initialization(a, b, c, N; σ=σ, ξ=ξ, rng=rng)
 
                 χ0, S_meas = disorder_strength(st.V, β; d=3)
@@ -433,13 +436,15 @@ function S_scan_N_vs_Hr(outpath;
     S_values = collect(0.0:S_step:S_max)
 
     # --- Baseline at same β: no disorder (σ=0) ---
-    rng0 = MersenneTwister(hash((seed, :baseline)))
+    rng0 = MersenneTwister(seed)
     st0  = initialization(a, b, c, 1; σ=0.0, ξ=ξ, rng=rng0)
     out0 = run!(st0; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng0)
 
     D0  = D_from_msdlag(out0.msdτ, out0.lag; d=3)
     Db0 = Dbulk_from_msdlag(out0.msdτ_bulk, out0.lag, out0.N; d=3)
     H0  = haven_ratio(D0, Db0)
+
+    rng = MersenneTwister(seed)
 
     open(outpath, "w") do io
         # global header (one time)
@@ -454,7 +459,7 @@ function S_scan_N_vs_Hr(outpath;
                 # If your disorder builder is such that var(V) ≈ σ^2, then S ≈ β^2 σ^2 / 3
                 σ = (S == 0.0) ? 0.0 : sqrt(3S) / β
 
-                rng = MersenneTwister(hash((seed, S, N)))
+                #rng = MersenneTwister(hash((seed, S, N)))
                 st  = initialization(a, b, c, N; σ=σ, ξ=ξ, rng=rng)
 
                 # (optional but useful to log)
