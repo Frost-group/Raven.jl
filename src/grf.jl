@@ -354,7 +354,7 @@ end
 function particle_scan(outpath; S = 4.0, ξ = 3.0, β_max = 1.0,
     a = 20, b = 20, c = 20,
     Nmax = 8000,
-    sweeps = 100000,
+    sweeps = 500000,
     sample_every = 10,
     lag_sweeps = 200,
     seed = 1
