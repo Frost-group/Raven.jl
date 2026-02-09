@@ -11,6 +11,6 @@ set ylabel "Hr"
 set yrange [0:1.3]
 
 set term pngcairo size 900,600
-set output "NvsHr_over_Beta.png"
+set output "NvsHr_over_Beta2.png"
 
 plot for [i=0:N-1] file index i using 1:5 with lines title sprintf("β=%.2f", i*4.0)
