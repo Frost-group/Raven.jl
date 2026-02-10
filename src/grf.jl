@@ -17,6 +17,7 @@ function grfpotential(a::Int, b::Int, c::Int, σ::Float64, ξ::Float64; rng=Rand
     @inbounds for i in 1:size(ηk, 1)
         kx = 2π*(i-1)/a  # nonnegative frequencies only (rfft)
         for j in 1:b
+
             ky = kfreq(j-1, b)
             for k in 1:c
                 kz = kfreq(k-1, c)
@@ -354,7 +355,7 @@ end
 function particle_scan(outpath; S = 4.0, ξ = 3.0, β_max = 1.0,
     a = 20, b = 20, c = 20,
     Nmax = 8000,
-    sweeps = 500000,
+    sweeps = 200000,
     sample_every = 10,
     lag_sweeps = 200,
     seed = 1
@@ -386,14 +387,25 @@ function particle_scan(outpath; S = 4.0, ξ = 3.0, β_max = 1.0,
             for j in eachindex(N_values)
                 N = N_values[j]
                 σ = sqrt(3S)
-                #rng = MersenneTwister(seed)
-                st = initialization(a, b, c, N; σ=σ, ξ=ξ, rng=rng)
 
-                χ0, S_meas = disorder_strength(st.V, β; d=3)
+                Dtrs = Float64[]
+                Dbulks = Float64[]
 
-                out = run!(st; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng)
-                Dtr = D_from_msdlag(out.msdτ, out.lag; d=3)
-                Db = Dbulk_from_msdlag(out.msdτ_bulk, out.lag, out.N; d=3)
+                for r in 1:5
+                    rng_r = MersenneTwister(seed + 10000 * i + 100 * j + r)
+                    #rng = MersenneTwister(seed)
+                    st = initialization(a, b, c, N; σ=σ, ξ=ξ, rng=rng_r)
+
+                    χ0, S_meas = disorder_strength(st.V, β; d=3)
+
+                    out = run!(st; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng_r)
+                    push!(Dtrs, D_from_msdlag(out.msdτ, out.lag; d=3))
+                    push!(Dbulks, Dbulk_from_msdlag(out.msdτ_bulk, out.lag, out.N; d=3))
+                end
+
+                Dtr = mean(Dtrs)
+                Db = mean(Dbulks)
+
                 H = haven_ratio(Dtr, Db)
                 normDtr = Dtr / D0
                 normDb = Db / D0
