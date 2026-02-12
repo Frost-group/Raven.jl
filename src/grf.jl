@@ -106,46 +106,48 @@ function attempt!(st::State, id::Int, β::Float64, rng)
     return false
 end
 
-# ---------------------------
-#  MSD logging (fixed-lag, time-origin averaged) without big dr_log
-# ---------------------------
+function attempt_noninteractive!(st, id, rng)
+    a, b, c = st.a, st.b, st.c
+    pos, occ, disp, V = st.pos, st.occ, st.disp, st.V
 
-mutable struct Ring
-    buf::Array{Int64,3}   # (L,3,N)
-    t::Int
-end
+    @inbounds begin
+        x, y, z = pos[id, 1], pos[id, 2], pos[id, 3]
+        dx, dy, dz = NBR[rand(rng, 1:length(NBR))]
 
-Ring(N::Int, L::Int) = Ring(zeros(Int64, L, 3, N), 0)
+        x2 = mod1p(x-1 + dx, a)
+        y2 = mod1p(y-1 + dy, b)
+        z2 = mod1p(z-1 + dz, c)
 
-# Push displacement snapshot; return MSD over a fixed lag if available, else NaN.
-function push_and_msd!(ring::Ring, disp::Matrix{Int64}, lag_samples::Int)
-    ring.t += 1
-    L = size(ring.buf, 1)
-    idx = (ring.t-1) % L + 1
-    @inbounds ring.buf[idx, :, :] .= disp
+        occ[x,y,z] = 0
+        occ[x2,y2,z2] = id
+        pos[id,:] .= (x2, y2, z2)
+        disp[1,id] += dx; disp[2,id] += dy; disp[3,id] += dz
 
-    ring.t <= lag_samples && return (NaN, NaN)
-
-    idx0 = (ring.t-1-lag_samples) % L + 1
-    N = size(disp,2)
-
-    total_tr = 0.0
-    sx = 0.0; sy = 0.0; sz = 0.0
-
-    @inbounds for i in 1:N
-        dx = Float64(disp[1,i] - ring.buf[idx0,1,i])
-        dy = Float64(disp[2,i] - ring.buf[idx0,2,i])
-        dz = Float64(disp[3,i] - ring.buf[idx0,3,i])
-        
-        total_tr += dx*dx + dy*dy + dz*dz
-        sx += dx; sy += dy; sz += dz
+        #occ[x2, y2, z2] != 0 uncomment this line for interaction
+        return true
     end
-
-    msd_tr = total_tr / N
-    msd_bulk = sx*sx + sy*sy + sz*sz
-
-    return (msd_tr, msd_bulk)
+    return false
 end
+
+function all_particle_run!(st; β=1.0, sweeps=100000, gap=100, rng=Random.default_rng())
+    N = size(st.pos, 1)
+
+    time = Int[]
+    msd0 = Float64[]
+    msdτ = Float64[]
+    msdτ_bulk = Float64[]
+
+    total_sweeps = 0
+    accepted_sweeps = 0
+
+    @inbounds for t in 1:sweeps
+        for _ in 1:N
+            id = rand(rng, 1:N)
+            pos = attempt_noninteractive!(st, id, rng)
+        end
+    end
+end
+
 
 function run!(st::State; β=1.0, sweeps=10000, sample_every=10, lag_sweeps=200, rng=Random.default_rng())
     N = size(st.pos, 1)
@@ -191,6 +193,48 @@ function run!(st::State; β=1.0, sweeps=10000, sample_every=10, lag_sweeps=200, 
     acc_ratio = total_accepts / max(1, total_attempts)
     return (times=times, msd0=msd0, msdτ=msdτ, msdτ_bulk=msdτ_bulk, lag=eff_lag_sweeps, acc_ratio=acc_ratio, N=N)
 end
+
+# ---------------------------
+#  MSD logging (fixed-lag, time-origin averaged) without big dr_log
+# ---------------------------
+
+mutable struct Ring
+    buf::Array{Int64,3}   # (L,3,N)
+    t::Int
+end
+
+Ring(N::Int, L::Int) = Ring(zeros(Int64, L, 3, N), 0)
+
+# Push displacement snapshot; return MSD over a fixed lag if available, else NaN.
+function push_and_msd!(ring::Ring, disp::Matrix{Int64}, lag_samples::Int)
+    ring.t += 1
+    L = size(ring.buf, 1)
+    idx = (ring.t-1) % L + 1
+    @inbounds ring.buf[idx, :, :] .= disp
+
+    ring.t <= lag_samples && return (NaN, NaN)
+
+    idx0 = (ring.t-1-lag_samples) % L + 1
+    N = size(disp,2)
+
+    total_tr = 0.0
+    sx = 0.0; sy = 0.0; sz = 0.0
+
+    @inbounds for i in 1:N
+        dx = Float64(disp[1,i] - ring.buf[idx0,1,i])
+        dy = Float64(disp[2,i] - ring.buf[idx0,2,i])
+        dz = Float64(disp[3,i] - ring.buf[idx0,3,i])
+        
+        total_tr += dx*dx + dy*dy + dz*dz
+        sx += dx; sy += dy; sz += dz
+    end
+
+    msd_tr = total_tr / N
+    msd_bulk = sx*sx + sy*sy + sz*sz
+
+    return (msd_tr, msd_bulk)
+end
+
 
 # diffusion estimate from fixed-lag msdτ series (ignore early NaNs)
 function D_from_msdlag(msdτ::Vector{Float64}, lag_sweeps::Int; d::Int=3)
@@ -352,6 +396,8 @@ function correlation_scan(outpath; S_max = 20.0, ξ_max = 10.0, β = 0.02,
     return nothing
 end
 
+
+
 function particle_scan(outpath; S = 4.0, ξ = 3.0, β_max = 1.0,
     a = 20, b = 20, c = 20,
     Nmax = 8000,
@@ -404,7 +450,10 @@ function particle_scan(outpath; S = 4.0, ξ = 3.0, β_max = 1.0,
                 end
 
                 Dtr = mean(Dtrs)
+                StdDtr = Statistics.std(Dtrs)
                 Db = mean(Dbulks)
+                StdDb = Statistics.std(Dtrs)
+
 
                 H = haven_ratio(Dtr, Db)
                 normDtr = Dtr / D0
