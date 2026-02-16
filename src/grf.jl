@@ -80,30 +80,40 @@ function initialization(a::Int, b::Int, c::Int, N::Int; σ=1.0, ξ=2.0, rng=Rand
     return State(a=a,b=b,c=c,pos=pos,occ=occ,disp=disp,V=V)
 end
 
-function attempt!(st::State, id::Int, β::Float64, rng)
+function attempt!(st::State, β::Float64, rng)
     a,b,c = st.a, st.b, st.c
     pos, occ, disp, V = st.pos, st.occ, st.disp, st.V
+    
+    N = length(pos[:,1])
+    ΔE = 0
+    pos_old = deepcopy(pos)
+    occ_old = deepcopy(occ)
 
-    @inbounds begin
-        x,y,z = pos[id,1], pos[id,2], pos[id,3]
-        dx,dy,dz = NBR[rand(rng, 1:length(NBR))]
+    for id in 1:N
+            x,y,z = pos[id,1], pos[id,2], pos[id,3]
+            dx,dy,dz = NBR[rand(rng, 1:length(NBR))]
 
-        x2 = mod1p(x-1 + dx, a)
-        y2 = mod1p(y-1 + dy, b)
-        z2 = mod1p(z-1 + dz, c)
+            x2 = mod1p(x-1 + dx, a)
+            y2 = mod1p(y-1 + dy, b)
+            z2 = mod1p(z-1 + dz, c)
 
-        occ[x2,y2,z2] != 0 && return false
+            #occ[x2,y2,z2] != 0 && return false
 
-        ΔE = V[x2,y2,z2] - V[x,y,z]
-        if (ΔE <= 0.0) || (rand(rng) < exp(-β*ΔE))
             occ[x,y,z] = 0
             occ[x2,y2,z2] = id
             pos[id,:] .= (x2,y2,z2)
             disp[1,id] += dx; disp[2,id] += dy; disp[3,id] += dz
-            return true
-        end
+
+            ΔE += V[x2,y2,z2] - V[x,y,z]
     end
-    return false
+
+    if (ΔE <= 0.0) || (rand(rng) < exp(-β*ΔE))
+        return true
+    else
+        pos = pos_old
+        occ = occ_old
+        return false
+    end
 end
 
 function attempt_noninteractive!(st, id, rng)
@@ -129,6 +139,7 @@ function attempt_noninteractive!(st, id, rng)
     return false
 end
 
+# attempts at fixing the position of the Metropolis-Hastings criteria before Ingvars' advice.
 function all_particle_run!(st; β=1.0, sweeps=100000, gap=100, rng=Random.default_rng())
     N = size(st.pos, 1)
 
@@ -138,15 +149,22 @@ function all_particle_run!(st; β=1.0, sweeps=100000, gap=100, rng=Random.defaul
     msdτ_bulk = Float64[]
 
     total_sweeps = 0
+    total_accepts = 0
+
+    total_sweeps = 0
     accepted_sweeps = 0
 
-    @inbounds for t in 1:sweeps
-        for _ in 1:N
-            id = rand(rng, 1:N)
-            pos = attempt_noninteractive!(st, id, rng)
-        end
+    for t in 1:sweeps
+        total_sweeps += 1
+        total_accepts += attempt!(st, β, rng) ? 1 : 0
+        println("sweep number $t finished.")
     end
+
+    acc_ratio = total_accepts / total_sweeps
+
+    println("simulation complete. Accepted $acc_ratio percent of the sweeps.")
 end
+
 
 
 function run!(st::State; β=1.0, sweeps=10000, sample_every=10, lag_sweeps=200, rng=Random.default_rng())
