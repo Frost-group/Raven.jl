@@ -116,6 +116,32 @@ function attempt!(st::State, β::Float64, rng)
     end
 end
 
+function attempt!(st::State, id::Int, β::Float64, rng)
+    a,b,c = st.a, st.b, st.c
+    pos, occ, disp, V = st.pos, st.occ, st.disp, st.V
+
+    @inbounds begin
+        x,y,z = pos[id,1], pos[id,2], pos[id,3]
+        dx,dy,dz = NBR[rand(rng, 1:length(NBR))]
+
+        x2 = mod1p(x-1 + dx, a)
+        y2 = mod1p(y-1 + dy, b)
+        z2 = mod1p(z-1 + dz, c)
+
+        occ[x2,y2,z2] != 0 && return false
+
+        ΔE = V[x2,y2,z2] - V[x,y,z]
+        if (ΔE <= 0.0) || (rand(rng) < exp(-β*ΔE))
+            occ[x,y,z] = 0
+            occ[x2,y2,z2] = id
+            pos[id,:] .= (x2,y2,z2)
+            disp[1,id] += dx; disp[2,id] += dy; disp[3,id] += dz
+            return true
+        end
+    end
+    return false
+end
+
 function attempt_noninteractive!(st, id, rng)
     a, b, c = st.a, st.b, st.c
     pos, occ, disp, V = st.pos, st.occ, st.disp, st.V
@@ -140,7 +166,7 @@ function attempt_noninteractive!(st, id, rng)
 end
 
 # attempts at fixing the position of the Metropolis-Hastings criteria before Ingvars' advice.
-function all_particle_run!(st; β=1.0, sweeps=100000, gap=100, rng=Random.default_rng())
+function all_particle_run!(st; β=1.0, sweeps=1000000, gap=100, rng=Random.default_rng())
     N = size(st.pos, 1)
 
     time = Int[]
@@ -150,9 +176,6 @@ function all_particle_run!(st; β=1.0, sweeps=100000, gap=100, rng=Random.defaul
 
     total_sweeps = 0
     total_accepts = 0
-
-    total_sweeps = 0
-    accepted_sweeps = 0
 
     for t in 1:sweeps
         total_sweeps += 1
@@ -491,6 +514,160 @@ function particle_scan(outpath; S = 4.0, ξ = 3.0, β_max = 1.0,
     return nothing
 end
 
+function particle_scan(outpath; S = 4.0, ξ = 3.0, β_max = 1.0,
+    a = 20, b = 20, c = 20,
+    Nmax = 8000,
+    sweeps = 200000,
+    sample_every = 10,
+    lag_sweeps = 200,
+    seed = 1
+)
+
+    mkpath(dirname(outpath))
+
+    N_values = collect(0:400:Nmax)
+    N_values[1] = 1
+    β_values = collect(0.0:0.2:β_max)
+    β_values[1] = 0.01
+    
+    rng0 = MersenneTwister(seed)
+    rng = MersenneTwister(seed)
+
+    open(outpath, "w") do io
+        println(io, "N\tbeta\tDtr\tDb\tH\tDtr_norm\tDb_norm")
+
+        for i in eachindex(β_values)
+            β = β_values[i]
+            N = 1
+            #rng0 = MersenneTwister(seed)
+            st0  = initialization(a, b, c, N; σ=0.0, ξ=ξ, rng=rng0)
+            out0 = run!(st0; β=0.05, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng0)
+            D0   = D_from_msdlag(out0.msdτ, out0.lag; d=3)
+            Db0  = Dbulk_from_msdlag(out0.msdτ, out0.lag, out0.N; d=3)
+            H0   = haven_ratio(D0, Db0)   
+
+            for j in eachindex(N_values)
+                N = N_values[j]
+                σ = sqrt(3S)
+
+                Dtrs = Float64[]
+                Dbulks = Float64[]
+
+                for r in 1:5
+                    rng_r = MersenneTwister(seed + 10000 * i + 100 * j + r)
+                    #rng = MersenneTwister(seed)
+                    st = initialization(a, b, c, N; σ=σ, ξ=ξ, rng=rng_r)
+
+                    χ0, S_meas = disorder_strength(st.V, β; d=3)
+
+                    out = run!(st; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=lag_sweeps, rng=rng_r)
+                    push!(Dtrs, D_from_msdlag(out.msdτ, out.lag; d=3))
+                    push!(Dbulks, Dbulk_from_msdlag(out.msdτ_bulk, out.lag, out.N; d=3))
+                end
+
+                Dtr = mean(Dtrs)
+                StdDtr = Statistics.std(Dtrs)
+                Db = mean(Dbulks)
+                StdDb = Statistics.std(Dtrs)
+
+
+                H = haven_ratio(Dtr, Db)
+                normDtr = Dtr / D0
+                normDb = Db / D0
+
+                @printf(io, "%.6g\t%.6g\t%.6g\t%.6g\t%.6g\t%.6g\t%.12g\n",
+                        N, β, Dtr, Db, H, normDtr, normDb)
+                println("simulation for N = $N is done.")
+            end
+            println(io)
+            println(io)
+            #println("Finished simulations for β = $β.")
+        end
+    end
+
+    @printf("Wrote %s\n", outpath)
+    return nothing
+end
+
+function beta_sweep_msd_scan(outpath::AbstractString;
+    beta_max::Float64 = 1.0,
+    beta_min::Float64 = 0.0,
+    beta_step::Float64 = 0.25,
+    a::Int = 20, b::Int = 20, c::Int = 20,
+    N::Int = 400,
+    sweeps::Int = 100000,
+    sample_every::Int = 100,
+    fit_window::Int = 20,
+    σ::Float64 = 0.0,
+    ξ::Float64 = 2.0,
+    reuse_disorder::Bool = true,
+    reuse_positions::Bool = true,
+    seed::Int = 1
+)
+    mkpath(dirname(outpath))
+
+    β_values = collect(beta_min:beta_step:beta_max)
+    β_values[1] = 0.01
+
+    # Build one disorder field if requested (same V for all betas)
+    Vfixed = if (reuse_disorder && σ > 0.0)
+        rngV = MersenneTwister(seed)
+        grfpotential(a,b,c,σ,ξ; rng=rngV)
+    else
+        zeros(a,b,c)
+    end
+
+    open(outpath, "w") do io
+        println(io, "beta\tsweep\tmsd_tr\tmsd_bulk\tDtr\tDbulk\tHr\tacc_ratio")
+
+        for (ib, β) in pairs(β_values)
+            # Disorder per beta if not reusing
+            Vβ = if (!reuse_disorder && σ > 0.0)
+                rngV = MersenneTwister(seed + 10000*ib)
+                grfpotential(a,b,c,σ,ξ; rng=rngV)
+            else
+                Vfixed
+            end
+
+            # Positions: same across betas if requested
+            rng_pos = reuse_positions ? MersenneTwister(seed) : MersenneTwister(seed + 1000*ib)
+            st = initialization(a, b, c, N)
+
+            Dtrs = Float64[]
+            Dbulks = Float64[]
+
+            last_out = nothing
+            # Dynamics RNG per beta (reproducible but different)
+            for r in 1:5
+                    rng_r = MersenneTwister(seed + 1000 * ib + r)
+                    #rng = MersenneTwister(seed)
+                    st = initialization(a, b, c, N; σ=σ, ξ=ξ, rng=rng_r)
+
+                    χ0, S_meas = disorder_strength(st.V, β; d=3)
+
+                    out = run!(st; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=fit_window, rng=rng_r)
+                    push!(Dtrs, D_from_msdlag(out.msdτ, out.lag; d=3))
+                    push!(Dbulks, Dbulk_from_msdlag(out.msdτ_bulk, out.lag, out.N; d=3))
+
+                    Dtr = mean(Dtrs)
+                    Db = mean(Dbulks)
+                    Hr = haven_ratio(Dtr, Db)
+
+                    @inbounds for k in eachindex(out.times)
+                        @printf(io, "%.6g\t%d\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.6g\n",
+                                β, out.times[k], out.msdτ[k], out.msdτ_bulk[k],
+                                Dtr, Db, Hr, out.acc_ratio)
+                    end
+            end
+            println("done for beta = $β.")
+            println(io)  # blank line between beta blocks (gnuplot index-friendly)
+            println(io)
+        end 
+    end
+
+    @printf("Wrote %s\n", outpath)
+    return nothing
+end
 
 function S_scan_N_vs_Hr(outpath;
     β = 0.02,
