@@ -142,54 +142,6 @@ function attempt!(st::State, id::Int, β::Float64, rng)
     return false
 end
 
-function attempt_noninteractive!(st, id, rng)
-    a, b, c = st.a, st.b, st.c
-    pos, occ, disp, V = st.pos, st.occ, st.disp, st.V
-
-    @inbounds begin
-        x, y, z = pos[id, 1], pos[id, 2], pos[id, 3]
-        dx, dy, dz = NBR[rand(rng, 1:length(NBR))]
-
-        x2 = mod1p(x-1 + dx, a)
-        y2 = mod1p(y-1 + dy, b)
-        z2 = mod1p(z-1 + dz, c)
-
-        occ[x,y,z] = 0
-        occ[x2,y2,z2] = id
-        pos[id,:] .= (x2, y2, z2)
-        disp[1,id] += dx; disp[2,id] += dy; disp[3,id] += dz
-
-        #occ[x2, y2, z2] != 0 uncomment this line for interaction
-        return true
-    end
-    return false
-end
-
-# attempts at fixing the position of the Metropolis-Hastings criteria before Ingvars' advice.
-function all_particle_run!(st; β=1.0, sweeps=1000000, gap=100, rng=Random.default_rng())
-    N = size(st.pos, 1)
-
-    time = Int[]
-    msd0 = Float64[]
-    msdτ = Float64[]
-    msdτ_bulk = Float64[]
-
-    total_sweeps = 0
-    total_accepts = 0
-
-    for t in 1:sweeps
-        total_sweeps += 1
-        total_accepts += attempt!(st, β, rng) ? 1 : 0
-        println("sweep number $t finished.")
-    end
-
-    acc_ratio = total_accepts / total_sweeps
-
-    println("simulation complete. Accepted $acc_ratio percent of the sweeps.")
-end
-
-
-
 function run!(st::State; β=1.0, sweeps=10000, sample_every=10, lag_sweeps=200, rng=Random.default_rng())
     N = size(st.pos, 1)
 
@@ -516,16 +468,16 @@ end
 
 function particle_scan(outpath; S = 4.0, ξ = 3.0, β_max = 1.0,
     a = 20, b = 20, c = 20,
-    Nmax = 8000,
-    sweeps = 200000,
-    sample_every = 10,
+    Nmax = 800,
+    sweeps = 1000000,
+    sample_every = 100,
     lag_sweeps = 200,
     seed = 1
 )
 
     mkpath(dirname(outpath))
 
-    N_values = collect(0:400:Nmax)
+    N_values = collect(0:40:Nmax)
     N_values[1] = 1
     β_values = collect(0.0:0.2:β_max)
     β_values[1] = 0.01
@@ -635,30 +587,34 @@ function beta_sweep_msd_scan(outpath::AbstractString;
 
             Dtrs = Float64[]
             Dbulks = Float64[]
+            trMSD = Float64[]
+            bulkMSD = Float64[]
 
-            last_out = nothing
             # Dynamics RNG per beta (reproducible but different)
-            for r in 1:5
-                    rng_r = MersenneTwister(seed + 1000 * ib + r)
-                    #rng = MersenneTwister(seed)
-                    st = initialization(a, b, c, N; σ=σ, ξ=ξ, rng=rng_r)
 
-                    χ0, S_meas = disorder_strength(st.V, β; d=3)
+            rng_r = MersenneTwister(seed + 1000 * ib)
+            #rng = MersenneTwister(seed)
+            st = initialization(a, b, c, N; σ=σ, ξ=ξ, rng=rng_r)
 
-                    out = run!(st; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=fit_window, rng=rng_r)
-                    push!(Dtrs, D_from_msdlag(out.msdτ, out.lag; d=3))
-                    push!(Dbulks, Dbulk_from_msdlag(out.msdτ_bulk, out.lag, out.N; d=3))
+            #χ0, S_meas = disorder_strength(st.V, β; d=3)
 
-                    Dtr = mean(Dtrs)
-                    Db = mean(Dbulks)
-                    Hr = haven_ratio(Dtr, Db)
+            out = run!(st; β=β, sweeps=sweeps, sample_every=sample_every, lag_sweeps=fit_window, rng=rng_r)
+            push!(Dtrs, D_from_msdlag(out.msdτ, out.lag; d=3))
+            push!(Dbulks, Dbulk_from_msdlag(out.msdτ_bulk, out.lag, out.N; d=3))
+            
+            Dtr = Dtrs[ib]
+            Db = Dbulks[ib]
 
-                    @inbounds for k in eachindex(out.times)
-                        @printf(io, "%.6g\t%d\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.6g\n",
-                                β, out.times[k], out.msdτ[k], out.msdτ_bulk[k],
-                                Dtr, Db, Hr, out.acc_ratio)
-                    end
+            Hr = haven_ratio(Dtr, Db)
+            trMSD = cumsum(replace(out.msdτ, NaN => 0.0))
+            bulkMSD = cumsum(replace(out.msdτ_bulk, NaN => 0.0))
+
+            @inbounds for k in eachindex(out.times)
+                @printf(io, "%.6g\t%d\t%.12g\t%.12g\t%.12g\t%.12g\t%.12g\t%.6g\n",
+                        β, out.times[k], trMSD[k], bulkMSD[k],
+                        Dtr, Db, Hr, out.acc_ratio)
             end
+
             println("done for beta = $β.")
             println(io)  # blank line between beta blocks (gnuplot index-friendly)
             println(io)
