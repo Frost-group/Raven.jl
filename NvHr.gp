@@ -1,6 +1,6 @@
 # NvHr.gp
-file  = "data/beta_vs_sweep_msd_N400.tsv"
-Temps = "500"   # IMPORTANT: spaces, no commas
+file  = "data/beta_vs_sweep_msd_N400-sigma10.0.tsv"
+Temps = "500 400 200 100 50 25 0.5"   # IMPORTANT: spaces, no commas
 
 set datafile separator "\t"
 set datafile missing "NaN"
@@ -10,7 +10,7 @@ set ylabel "tracer MSD"
 set xrange [0:*]
 
 set term pngcairo size 900,600
-set output "sweeps_vs_trMSD-3.png"
+set output "sweeps_vs_trMSD-sigma10.0.png"
 
 n = words(Temps)
 

@@ -581,7 +581,7 @@ function beta_sweep_msd_scan(outpath::AbstractString;
     sweeps::Int = 10000000,
     sample_every::Int = 10,
     lag_samples::Int = 5,          # interpret as “number of samples” for the lag
-    σ::Float64 = 0.0,
+    σ::Float64 = 3.0,
     ξ::Float64 = 2.0,
     reuse_disorder::Bool = true,
     reuse_positions::Bool = true,
