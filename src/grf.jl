@@ -575,7 +575,7 @@ function particle_scan(outpath; S = 4.0, ξ = 3.0, β_max = 1.0,
 end
 
 function beta_sweep_msd_scan(outpath::AbstractString;
-    β_values = [0.002, 0.0025, 0.005, 0.01, 0.02, 0.04, 2.0],
+    β_values = [0.04, 0.05, 0.07, 0.1, 0.2, 0.5, 1.0, 2.0],
     a::Int = 20, b::Int = 20, c::Int = 20,
     N::Int = 400,
     sweeps::Int = 10000000,
