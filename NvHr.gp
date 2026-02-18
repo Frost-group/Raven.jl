@@ -1,6 +1,6 @@
 # NvHr.gp
 file  = "data/T0.5-25K_scan_sigma3.0.tsv"
-Temps = "0.5 1 2 5 10 15 20 25"   # IMPORTANT: spaces, no commas
+Temps = "25 20 15 10 5 2 1 0.5"   # IMPORTANT: spaces, no commas
 
 set datafile separator "\t"
 set datafile missing "NaN"
