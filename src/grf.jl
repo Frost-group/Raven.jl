@@ -1,4 +1,4 @@
-using Random, FFTW, Statistics, Printf
+ using Random, FFTW, Statistics, Printf
 
 # ---------------------------
 #  GRF potential
