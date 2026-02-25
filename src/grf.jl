@@ -4,6 +4,8 @@
 #  GRF potential
 # ---------------------------
 
+const k_B=8.617333262145E-5 # in eV/K
+
 @inline function kfreq(n::Int, L::Int)
     n <= (L ÷ 2) ? (2π*n/L) : (2π*(n-L)/L)
 end
@@ -32,7 +34,7 @@ function grfpotential(a::Int, b::Int, c::Int, σ::Float64, ξ::Float64; rng=Rand
     V = FFTW.irfft(Vk, a)                  # back to real space
 
     V .-= mean(V)
-    V .*= (100 * σ / std(V))                     # enforce target std (approx exact), scaled x100 to match physical temperature.
+    V .*= (σ / (std(V)*100))                     # enforce target std (approx exact), scaled x100 to match physical temperature.
 
     return V
 end
@@ -133,7 +135,7 @@ function attempt!(st::State, β::Float64, rng)
     pos, occ, disp, V = st.pos, st.occ, st.disp, st.V
     
     N = length(pos[:,1])
-    ΔE = 0
+    ΔE = 0 # we want this to be in eV
     pos_old = deepcopy(pos)
     occ_old = deepcopy(occ)
 
@@ -152,7 +154,7 @@ function attempt!(st::State, β::Float64, rng)
             pos[id,:] .= (x2,y2,z2)
             disp[1,id] += dx; disp[2,id] += dy; disp[3,id] += dz
 
-            ΔE += V[x2,y2,z2] - V[x,y,z]
+            ΔE += (V[x2,y2,z2] - V[x,y,z])
     end
 
     if (ΔE <= 0.0) || (rand(rng) < exp(-β*ΔE))
@@ -623,7 +625,7 @@ function particle_scan(outpath; S = 4.0, ξ = 3.0, β_max = 1.0,
 end
 
 function beta_sweep_msd_scan(outpath::AbstractString;
-    β_values = [0.002, 0.0025, 0.005, 0.01, 0.02, 0.04],
+    T_values = [500, 400, 200, 100, 50, 25],
     a::Int = 20, b::Int = 20, c::Int = 20,
     N::Int = 400,
     sweeps::Int = 10000000,
@@ -636,6 +638,8 @@ function beta_sweep_msd_scan(outpath::AbstractString;
     seed::Int = 1
 )
     mkpath(dirname(outpath))
+
+    β_values = 1.0 ./ (k_B .* T_values)
 
     # Build one disorder field if requested
     Vfixed = if (reuse_disorder && σ > 0.0)
