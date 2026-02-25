@@ -1,6 +1,6 @@
 # NvHr.gp
-file  = "data/T0.5-25K_scan_sigma3.0.tsv"
-Temps = "25 20 15 10 5 2 1 0.5"   # IMPORTANT: spaces, no commas
+file  = "data/T25-500K_scan_sigma3.0-upscaledV.tsv"
+Temps = "500 400 200 100 50 25"   # IMPORTANT: spaces, no commas
 
 set datafile separator "\t"
 set datafile missing "NaN"
@@ -10,7 +10,7 @@ set ylabel "tracer MSD"
 set xrange [0:*]
 
 set term pngcairo size 900,600
-set output "T0.5-25K_scan_sigma3.0.png"
+set output "T25-500K_scan_sigma3.0-upscaledV.png"
 
 n = words(Temps)
 
