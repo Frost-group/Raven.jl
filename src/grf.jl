@@ -37,6 +37,54 @@ function grfpotential(a::Int, b::Int, c::Int, σ::Float64, ξ::Float64; rng=Rand
     return V
 end
 
+function write_grf_slice_xyz(outfile, V; axis=:z, idx=center, zero_based=true)
+    a, b, c = size(V)
+
+    # axis checks
+    if axis == :x
+        @assert 1 <= idx <= a "idx must be in 1:$a for axis=:x"
+        n1, n2 = b, c
+        label1, label2 = "y", "z"
+    elseif axis == :y
+        @assert 1 <= idx <= b "idx must be in 1:$b for axis=:y"
+        n1, n2 = a, c
+        label1, label2 = "x", "z"
+    elseif axis == :z
+        @assert 1 <= idx <= c "idx must be in 1:$c for axis=:z"
+        n1, n2 = a, b
+        label1, label2 = "x", "y"
+    else
+        error("axis must be :x, :y, or :z")
+    end
+
+    open(outfile, "w") do io
+        println(io, "# GRF slice")
+        println(io, "# axis = $(axis), idx = $(idx)")
+        println(io, "# columns: $(label1)\t$(label2)\tV")
+
+        for j in 1:n2
+            for i in 1:n1
+                xout = zero_based ? (i-1) : i
+                yout = zero_based ? (j-1) : j
+
+                val = if axis == :x
+                    V[idx, i, j] # (y, z)
+                elseif axis == :y
+                    V[i, idx, j] # (x, z)
+                else
+                    V[i, j, idx] # (x, y)
+                end
+
+                @printf(io, "%d\t%d\t%.12g\n", xout, yout, val)
+            end
+            println(io)
+        end
+    end
+
+    @printf("Wrote slice file: %s (axis=%s, idx=%d)\n", outfile, String(axis), idx)
+    return nothing
+end
+
 # disorder metrics (match your old definition)
 @inline function disorder_strength(V, β; d::Int=3)
     vmean = mean(V)
