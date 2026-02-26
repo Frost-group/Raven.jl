@@ -5,6 +5,8 @@
 # ---------------------------
 
 const k_B=8.617333262145E-5 # in eV/K
+const a0_a=2.0 # Angstrom per lattice step
+const a0_m =2.0e-19 #meters per lattice step
 
 @inline function kfreq(n::Int, L::Int)
     n <= (L ÷ 2) ? (2π*n/L) : (2π*(n-L)/L)
@@ -192,7 +194,18 @@ function attempt!(st::State, id::Int, β::Float64, rng)
     return false
 end
 
-function run!(st::State; β=1.0, sweeps=10000, sample_every=10, lag_sweeps=200, rng=Random.default_rng())
+function run!(st::State; 
+    β=1.0, 
+    sweeps=10000, 
+    sample_every=10, 
+    lag_sweeps=200, 
+    rng=Random.default_rng(), 
+    dump_path=nothing, 
+    dump_every=0,           # 0 => use sample_every
+    lattice_spacing=1.0,    # e.g. Å per lattice hop
+    species="Li", 
+    write_initial_frame=true
+)
     N = size(st.pos, 1)
 
     lag_samples = max(1, cld(lag_sweeps, sample_every))
@@ -216,59 +229,109 @@ function run!(st::State; β=1.0, sweeps=10000, sample_every=10, lag_sweeps=200, 
     total_attempts = 0
     total_accepts  = 0
 
-    @inbounds for s in 1:sweeps
-        for _ in 1:N
-            id = rand(rng, 1:N)
-            total_attempts += 1
-            total_accepts  += attempt!(st, id, β, rng) ? 1 : 0
+    # --- dump setup ---
+    pos0 = copy(st.pos) # need to unwrap positions
+    dump_every = dump_every <= 0 ? sample_every : dump_every
+    dump_io = nothing
+
+    if dump_path !== nothing
+        mkpath(dirname(dump_path))
+        dump_io = open(dump_path, "w")
+        if write_initial_frame
+            write_lammps_dump_frame(dump_io, st, 0, pos0;
+                lattice_spacing=lattice_spacing, species=species)
         end
+    end
 
-        if s % sample_every == 0
-            push!(times, s)
-
-            # origin-based MSD
-            acc = 0.0
-            for i in 1:N
-                dx = Float64(st.disp[1,i]); dy = Float64(st.disp[2,i]); dz = Float64(st.disp[3,i])
-                acc += dx*dx + dy*dy + dz*dz
+    try
+        @inbounds for s in 1:sweeps
+            for _ in 1:N
+                id = rand(rng, 1:N)
+                total_attempts += 1
+                total_accepts += attempt!(st, id, β, rng) ? 1 : 0
             end
-            push!(msd0, acc / N)
-
-            # fixed-lag tracer + bulk
-            tr, bulk = push_and_msd!(ring, st.disp, lag_samples)
-            push!(msdτ, tr)
-            push!(msdτ_bulk, bulk)
-
-            # NEW: update running means only when finite
-            if isfinite(tr)
-                n_valid += 1
-                sum_tr   += tr
-                sum_bulk += bulk
-
-                mean_tr   = sum_tr / n_valid
-                mean_bulk = sum_bulk / n_valid
-
-                Dtr_est   = mean_tr   / (2 * 3 * eff_lag_sweeps)
-                Dbulk_est = mean_bulk / (2 * 3 * eff_lag_sweeps * N)
-
-                push!(Dtr_run, Dtr_est)
-                push!(Dbulk_run, Dbulk_est)
-                push!(H_run, haven_ratio(Dtr_est, Dbulk_est))
-            else
-                # keep arrays aligned with samples if you want
-                push!(Dtr_run, NaN)
-                push!(Dbulk_run, NaN)
-                push!(H_run, NaN)
+            
+            # --- optional trajectory frame ---
+            if dump_io !== nothing && (s % dump_every == 0)
+                write_lammps_dump_frame(dump_io, st, s, pos0;
+                    lattice_spacing=lattice_spacing, species=species)
             end
+
+            if s % sample_every == 0
+                push!(times, s)
+
+                acc = 0.0
+                for i in 1:N
+                    dx = Float64(st.disp[1,i]); dy = Float64(st.disp[2,i]); dz = Float64(st.disp[3,i])
+                    acc += dx*dx + dy*dy + dz*dz
+                end
+                push!(msd0, acc / N)
+
+                tr, bulk = push_and_msd!(ring, st.disp, lag_samples)
+                push!(msdτ, tr)
+                push!(msdτ_bulk, bulk)
+
+                if isfinite(tr)
+                    n_valid += 1
+                    sum_tr   += tr
+                    sum_bulk += bulk
+
+                    mean_tr   = sum_tr / n_valid
+                    mean_bulk = sum_bulk / n_valid
+
+                    Dtr_est   = mean_tr   / (2 * 3 * eff_lag_sweeps)
+                    Dbulk_est = mean_bulk / (2 * 3 * eff_lag_sweeps * N)
+
+                    push!(Dtr_run, Dtr_est)
+                    push!(Dbulk_run, Dbulk_est)
+                    push!(H_run, haven_ratio(Dtr_est, Dbulk_est))
+                else
+                    push!(Dtr_run, NaN)
+                    push!(Dbulk_run, NaN)
+                    push!(H_run, NaN)
+                end
+            end
+        end
+    finally
+        if dump_io !== nothing
+            close(dump_io)
         end
     end
 
     acc_ratio = total_accepts / max(1, total_attempts)
+
     return (times=times, msd0=msd0, msdτ=msdτ, msdτ_bulk=msdτ_bulk,
             Dtr_run=Dtr_run, Dbulk_run=Dbulk_run, H_run=H_run,
             lag=eff_lag_sweeps, acc_ratio=acc_ratio, N=N)
 end
 
+function write_lammps_dump_frame(io, st, step, pos0; lattice_spacing=1.0, species = "Li", type_id = 1, center_sites = true)
+    a, b, c = st.a, st.b, st.c
+    N = size(st.pos, 1)
+
+    offset = center_sites ? 0.5 : 0.0
+
+    println(io, "ITEM: TIMESTEP")
+    println(io, step)
+    println(io, "ITEM: NUMBER OF ATOMS")
+    println(io, N)
+    println(io, "ITEM: BOX BOUNDS pp pp pp")
+    @printf(io, "%.12g %.12g\n", 0.0, a * lattice_spacing)
+    @printf(io, "%.12g %.12g\n", 0.0, b * lattice_spacing)
+    @printf(io, "%.12g %.12g\n", 0.0, c * lattice_spacing)
+
+    println(io, "ITEM: ATOMS id type element xu yu zu")
+
+    @inbounds for id in 1:N
+        # Unwrapped coordinate = initial site + cumulative displacement
+        xu = (pos0[id, 1] - 1 + offset + st.disp[1,id]) * lattice_spacing
+        yu = (pos0[id ,2] - 1 + offset + st.disp[2,id]) * lattice_spacing
+        zu = (pos0[id, 3] - 1 + offset + st.disp[3,id]) * lattice_spacing
+
+        @printf(io, "%d %d %s %.12g %.12g %.12g\n",
+                id, type_id, species, xu, yu, zu)
+    end
+end
 
 # ---------------------------
 #  MSD logging (fixed-lag, time-origin averaged) without big dr_log
