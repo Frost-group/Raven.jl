@@ -6,7 +6,7 @@
 
 const k_B=8.617333262145E-5 # in eV/K
 const a0_a=2.0 # Angstrom per lattice step
-const a0_m =2.0e-19 #meters per lattice step
+const a0_m =2.0e-10 #meters per lattice step
 
 @inline function kfreq(n::Int, L::Int)
     n <= (L ÷ 2) ? (2π*n/L) : (2π*(n-L)/L)
@@ -200,11 +200,13 @@ function run!(st::State;
     sample_every=10, 
     lag_sweeps=200, 
     rng=Random.default_rng(), 
-    dump_path=nothing, 
-    dump_every=0,           # 0 => use sample_every
-    lattice_spacing=1.0,    # e.g. Å per lattice hop
-    species="Li", 
-    write_initial_frame=true
+    xyz_path=nothing,
+    extxyz_path=nothing,
+    traj_every=0,
+    lattice_spacing=1.0,
+    species="Li",
+    write_initial_frame=true,
+    sweep_dt_fs=nothing
 )
     N = size(st.pos, 1)
 
@@ -216,30 +218,46 @@ function run!(st::State;
     times = Int[]
     msd0  = Float64[]
     msdτ  = Float64[]
-    msdτ_bulk  = Float64[]
+    msdτ_bulk = Float64[]
 
-    # NEW: running diffusion estimates
-    Dtr_run    = Float64[]
-    Dbulk_run  = Float64[]
-    H_run      = Float64[]
-    sum_tr     = 0.0
-    sum_bulk   = 0.0
-    n_valid    = 0
+    Dtr_run   = Float64[]
+    Dbulk_run = Float64[]
+    H_run     = Float64[]
+    sum_tr    = 0.0
+    sum_bulk  = 0.0
+    n_valid   = 0
 
     total_attempts = 0
     total_accepts  = 0
 
-    # --- dump setup ---
-    pos0 = copy(st.pos) # need to unwrap positions
-    dump_every = dump_every <= 0 ? sample_every : dump_every
-    dump_io = nothing
+    # --- trajectory setup ---
+    pos0 = copy(st.pos)
+    traj_every = traj_every <= 0 ? sample_every : traj_every
 
-    if dump_path !== nothing
-        mkpath(dirname(dump_path))
-        dump_io = open(dump_path, "w")
-        if write_initial_frame
-            write_lammps_dump_frame(dump_io, st, 0, pos0;
-                lattice_spacing=lattice_spacing, species=species)
+    xyz_io = nothing
+    extxyz_io = nothing
+
+    if xyz_path !== nothing
+        mkpath(dirname(xyz_path))
+        xyz_io = open(xyz_path, "w")
+    end
+
+    if extxyz_path !== nothing
+        mkpath(dirname(extxyz_path))
+        extxyz_io = open(extxyz_path, "w")
+    end
+
+    if write_initial_frame
+        t_fs0 = sweep_dt_fs === nothing ? nothing : 0.0
+
+        if xyz_io !== nothing
+            write_xyz_frame(xyz_io, st, 0, pos0;
+                lattice_spacing=lattice_spacing, species=species, time_fs=t_fs0)
+        end
+
+        if extxyz_io !== nothing
+            write_extxyz_frame(extxyz_io, st, 0, pos0;
+                lattice_spacing=lattice_spacing, species=species, time_fs=t_fs0)
         end
     end
 
@@ -250,19 +268,31 @@ function run!(st::State;
                 total_attempts += 1
                 total_accepts += attempt!(st, id, β, rng) ? 1 : 0
             end
-            
-            # --- optional trajectory frame ---
-            if dump_io !== nothing && (s % dump_every == 0)
-                write_lammps_dump_frame(dump_io, st, s, pos0;
-                    lattice_spacing=lattice_spacing, species=species)
+
+            # --- optional trajectory frames ---
+            if (xyz_io !== nothing || extxyz_io !== nothing) && (s % traj_every == 0)
+                t_fs = sweep_dt_fs === nothing ? nothing : s * sweep_dt_fs
+
+                if xyz_io !== nothing
+                    write_xyz_frame(xyz_io, st, s, pos0;
+                        lattice_spacing=lattice_spacing, species=species, time_fs=t_fs)
+                end
+
+                if extxyz_io !== nothing
+                    write_extxyz_frame(extxyz_io, st, s, pos0;
+                        lattice_spacing=lattice_spacing, species=species, time_fs=t_fs)
+                end
             end
 
+            # --- MSD sampling ---
             if s % sample_every == 0
                 push!(times, s)
 
                 acc = 0.0
                 for i in 1:N
-                    dx = Float64(st.disp[1,i]); dy = Float64(st.disp[2,i]); dz = Float64(st.disp[3,i])
+                    dx = Float64(st.disp[1,i])
+                    dy = Float64(st.disp[2,i])
+                    dz = Float64(st.disp[3,i])
                     acc += dx*dx + dy*dy + dz*dz
                 end
                 push!(msd0, acc / N)
@@ -293,17 +323,30 @@ function run!(st::State;
             end
         end
     finally
-        if dump_io !== nothing
-            close(dump_io)
+        if xyz_io !== nothing
+            close(xyz_io)
+        end
+        if extxyz_io !== nothing
+            close(extxyz_io)
         end
     end
 
     acc_ratio = total_accepts / max(1, total_attempts)
 
-    return (times=times, msd0=msd0, msdτ=msdτ, msdτ_bulk=msdτ_bulk,
-            Dtr_run=Dtr_run, Dbulk_run=Dbulk_run, H_run=H_run,
-            lag=eff_lag_sweeps, acc_ratio=acc_ratio, N=N)
+    return (
+        times=times,
+        msd0=msd0,
+        msdτ=msdτ,
+        msdτ_bulk=msdτ_bulk,
+        Dtr_run=Dtr_run,
+        Dbulk_run=Dbulk_run,
+        H_run=H_run,
+        lag=eff_lag_sweeps,
+        acc_ratio=acc_ratio,
+        N=N,
+    )
 end
+
 
 function write_lammps_dump_frame(io, st, step, pos0; lattice_spacing=1.0, species = "Li", type_id = 1, center_sites = true)
     a, b, c = st.a, st.b, st.c
@@ -332,6 +375,67 @@ function write_lammps_dump_frame(io, st, step, pos0; lattice_spacing=1.0, specie
                 id, type_id, species, xu, yu, zu)
     end
 end
+
+function write_xyz_frame(io, st, step, pos0;
+    lattice_spacing=1.0,
+    species="Li",
+    center_sites=true,
+    time_fs=nothing,
+)
+    N = size(st.pos, 1)
+    offset = center_sites ? 0.5 : 0.0
+
+    println(io, N)
+    if time_fs === nothing
+        println(io, "step=$step")
+    else
+        println(io, "step=$step time_fs=$time_fs")
+    end
+
+    @inbounds for id in 1:N
+        x = (pos0[id,1] - 1 + offset + st.disp[1,id]) * lattice_spacing
+        y = (pos0[id,2] - 1 + offset + st.disp[2,id]) * lattice_spacing
+        z = (pos0[id,3] - 1 + offset + st.disp[3,id]) * lattice_spacing
+        @printf(io, "%s %.12g %.12g %.12g\n", species, x, y, z)
+    end
+end
+
+function write_extxyz_frame(io, st, step, pos0;
+    lattice_spacing=1.0,
+    species="Li",
+    center_sites=true,
+    time_fs=nothing,
+)
+    a, b, c = st.a, st.b, st.c
+    N = size(st.pos, 1)
+    offset = center_sites ? 0.5 : 0.0
+
+    Lx = a * lattice_spacing
+    Ly = b * lattice_spacing
+    Lz = c * lattice_spacing
+
+    println(io, N)
+
+    if time_fs === nothing
+        @printf(io,
+            "Lattice=\"%.12g 0 0 0 %.12g 0 0 0 %.12g\" Properties=species:S:1:pos:R:3 step=%d pbc=\"T T T\"\n",
+            Lx, Ly, Lz, step
+        )
+    else
+        @printf(io,
+            "Lattice=\"%.12g 0 0 0 %.12g 0 0 0 %.12g\" Properties=species:S:1:pos:R:3 step=%d time_fs=%.12g pbc=\"T T T\"\n",
+            Lx, Ly, Lz, step, time_fs
+        )
+    end
+
+    @inbounds for id in 1:N
+        x = (pos0[id,1] - 1 + offset + st.disp[1,id]) * lattice_spacing
+        y = (pos0[id,2] - 1 + offset + st.disp[2,id]) * lattice_spacing
+        z = (pos0[id,3] - 1 + offset + st.disp[3,id]) * lattice_spacing
+        @printf(io, "%s %.12g %.12g %.12g\n", species, x, y, z)
+    end
+end
+
 
 # ---------------------------
 #  MSD logging (fixed-lag, time-origin averaged) without big dr_log
